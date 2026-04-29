@@ -52,8 +52,10 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://user:pass@localhost:5432/db
           JWT_SECRET_KEY: test
           TYPESENSE_API_KEY: test
+          RATE_LIMIT_ENABLED: "false"
+          RATE_LIMIT_STORAGE_URI: "memory://"
         run: |
-          pytest -q
+          pytest -q -vv
 
   frontend:
     runs-on: ubuntu-latest
@@ -89,7 +91,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run Trivy repo scan (SARIF)
-        uses: aquasecurity/trivy-action@0.20.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
