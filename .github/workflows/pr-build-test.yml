@@ -72,9 +72,11 @@ jobs:
       - name: Bootstrap melos
         run: |
           dart pub get
-          dart run melos bootstrap
+          dart pub global activate melos
+          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+          melos bootstrap
       - name: Analyze
-        run: dart run melos run analyze
+        run: melos run analyze
       - name: Test
         run: |
           cd packages/app
