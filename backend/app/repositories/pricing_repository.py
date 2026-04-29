@@ -22,19 +22,54 @@ class PricingRepository:
         stmt = insert(PricingRecord).values(rows)
         await db.execute(stmt)
 
-    async def bulk_upsert_by_store_sku_date(self, db: AsyncSession, rows: list[dict]) -> None:
+    async def bulk_upsert_by_store_sku_date(self, db: AsyncSession, rows: list[dict]) -> list[dict]:
         if not rows:
-            return
+            return []
         stmt = insert(PricingRecord).values(rows)
         stmt = stmt.on_conflict_do_update(
-            index_elements=[PricingRecord.store_id, PricingRecord.sku, PricingRecord.date],
+            index_elements=[PricingRecord.country_code, PricingRecord.store_id, PricingRecord.sku, PricingRecord.date],
             set_={
                 "product_name": stmt.excluded.product_name,
                 "price": stmt.excluded.price,
+                "currency_code": stmt.excluded.currency_code,
+                "tax_inclusive": stmt.excluded.tax_inclusive,
+                "observed_at": func.now(),
+                "feed_id": stmt.excluded.feed_id,
+                "source_line": stmt.excluded.source_line,
+                "updated_by_user_id": stmt.excluded.updated_by_user_id,
+                "updated_source": stmt.excluded.updated_source,
+                "update_reason": stmt.excluded.update_reason,
                 "updated_at": func.now(),
             },
         )
-        await db.execute(stmt)
+        stmt = stmt.returning(
+            PricingRecord.id,
+            PricingRecord.country_code,
+            PricingRecord.store_id,
+            PricingRecord.sku,
+            PricingRecord.product_name,
+            PricingRecord.price,
+            PricingRecord.currency_code,
+            PricingRecord.tax_inclusive,
+            PricingRecord.date,
+        )
+        res = await db.execute(stmt)
+        out: list[dict] = []
+        for row in res.mappings().all():
+            out.append(
+                {
+                    "id": row["id"],
+                    "country_code": row["country_code"],
+                    "store_id": row["store_id"],
+                    "sku": row["sku"],
+                    "product_name": row["product_name"],
+                    "price": float(row["price"]),
+                    "date": row["date"],
+                    "currency_code": row["currency_code"],
+                    "tax_inclusive": row["tax_inclusive"],
+                }
+            )
+        return out
 
     async def update_price(self, db: AsyncSession, record_id: uuid.UUID, price: float) -> PricingRecord | None:
         stmt = (
@@ -70,12 +105,15 @@ class PricingRepository:
         self,
         *,
         q: str | None,
+        country_code: str | None,
         store_id: str | None,
         sku: str | None,
         date_from: date | None,
         date_to: date | None,
     ) -> Select:
         stmt: Select = select(PricingRecord)
+        if country_code:
+            stmt = stmt.where(PricingRecord.country_code == country_code)
         if store_id:
             stmt = stmt.where(PricingRecord.store_id == store_id)
         if sku:

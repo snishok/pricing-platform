@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +17,10 @@ class PricingRecordAudit(Base):
 
     record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("pricing_records.id"), index=True, nullable=False)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True, nullable=False)
+
+    feed_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("pricing_feed_uploads.id"), index=True, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="manual")  # manual|ingest|api
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     old_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
     new_values: Mapped[dict] = mapped_column(JSONB, nullable=False)

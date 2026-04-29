@@ -95,6 +95,11 @@ kubectl apply -f infra/k8s/postgres-statefulset.yaml
 kubectl apply -f infra/k8s/typesense-deployment.yaml
 kubectl apply -f infra/k8s/backend-deployment.yaml
 kubectl apply -f infra/k8s/frontend-deployment.yaml
+kubectl apply -f infra/k8s/retention-cronjob.yaml
 kubectl apply -f infra/k8s/ingress.yaml
 ```
+
+### Partitioning & retention (production knobs)
+- **Pricing table partitioning**: set `ENABLE_PRICING_PARTITIONING=true` to convert `pricing_records` to **monthly partitions** (RANGE by `date`) and auto-create partitions around “now”.
+- **Retention**: set `PRICING_RETENTION_DAYS` (default `730`). A Kubernetes CronJob manifest is provided at `infra/k8s/retention-cronjob.yaml`.
 

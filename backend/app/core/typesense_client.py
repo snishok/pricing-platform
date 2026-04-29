@@ -28,10 +28,13 @@ def get_typesense_client() -> typesense.Client:
 PRICING_COLLECTION_SCHEMA: dict[str, Any] = {
     "name": settings.typesense_collection,
     "fields": [
+        {"name": "country_code", "type": "string", "facet": True},
         {"name": "store_id", "type": "string", "facet": True},
         {"name": "sku", "type": "string", "facet": True},
         {"name": "product_name", "type": "string"},
         {"name": "price", "type": "float"},
+        {"name": "currency_code", "type": "string", "facet": True},
+        {"name": "tax_inclusive", "type": "bool", "facet": True},
         {"name": "date", "type": "int64", "facet": True},
         {"name": "db_id", "type": "string"},
     ],
@@ -43,7 +46,15 @@ async def ensure_pricing_collection(client: typesense.Client) -> None:
     # typesense python client is sync; run in thread to keep FastAPI async clean
     def _ensure() -> None:
         try:
-            client.collections[settings.typesense_collection].retrieve()
+            existing = client.collections[settings.typesense_collection].retrieve()
+            existing_fields = {f.get("name") for f in (existing or {}).get("fields", []) if isinstance(f, dict)}
+            desired_fields = {f["name"] for f in PRICING_COLLECTION_SCHEMA.get("fields", [])}
+
+            missing = [f for f in PRICING_COLLECTION_SCHEMA.get("fields", []) if f["name"] not in existing_fields]
+            if missing:
+                client.collections[settings.typesense_collection].update({"fields": missing})
+            # If desired_fields shrank or field types changed, we intentionally do not auto-mutate.
+            # That requires a reindex/recreate flow.
             return
         except Exception:
             client.collections.create(PRICING_COLLECTION_SCHEMA)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+from datetime import date
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,6 +11,7 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
+from sqlalchemy import text
 
 from app.api import auth, health, pricing, upload
 from app.core.config import settings
@@ -18,6 +21,7 @@ from app.core.logging import configure_logging, logger
 from app.core.security import hash_password
 from app.core.roles import UserRole
 from app.core.typesense_client import ensure_pricing_collection, get_typesense_client
+from app.core.partitioning import convert_pricing_records_to_partitioned, ensure_monthly_partitions
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 
@@ -69,7 +73,109 @@ def create_app() -> FastAPI:
     async def on_startup() -> None:
         async def _db_ready() -> None:
             async with engine.begin() as conn:
+                # Extensions used for scalable fallback search
+                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
                 await conn.run_sync(Base.metadata.create_all)
+                # Lightweight "migration" for local dev: older volumes may miss columns.
+                # create_all won't add missing columns, so patch common drift safely.
+                await conn.execute(
+                    text(
+                        """
+                        ALTER TABLE IF EXISTS users
+                        ADD COLUMN IF NOT EXISTS role VARCHAR(32) NOT NULL DEFAULT 'viewer'
+                        """
+                    )
+                )
+                # Backfill + add new columns for pricing_records
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS country_code VARCHAR(2) NOT NULL DEFAULT 'XX'"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS currency_code VARCHAR(3) NOT NULL DEFAULT 'USD'"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS tax_inclusive BOOLEAN NOT NULL DEFAULT TRUE"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS feed_id UUID NULL"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS source_line INTEGER NULL"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS updated_by_user_id UUID NULL"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS updated_source VARCHAR(32) NOT NULL DEFAULT 'ingest'"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_records ADD COLUMN IF NOT EXISTS update_reason TEXT NULL"))
+
+                # Upserts rely on a unique index for ON CONFLICT (country_code, store_id, sku, date).
+                # Existing volumes may contain duplicates; dedupe first (keep newest record per key).
+                await conn.execute(
+                    text(
+                        """
+                        WITH ranked AS (
+                          SELECT
+                            ctid,
+                            ROW_NUMBER() OVER (
+                              PARTITION BY country_code, store_id, sku, date
+                              ORDER BY updated_at DESC, created_at DESC, id DESC
+                            ) AS rn
+                          FROM pricing_records
+                        )
+                        DELETE FROM pricing_records
+                        WHERE ctid IN (SELECT ctid FROM ranked WHERE rn > 1)
+                        """
+                    )
+                )
+                await conn.execute(
+                    text(
+                        """
+                        CREATE UNIQUE INDEX IF NOT EXISTS uq_pricing_records_country_store_sku_date_idx
+                        ON pricing_records (country_code, store_id, sku, date)
+                        """
+                    )
+                )
+
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pricing_records_country_code ON pricing_records(country_code)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pricing_records_currency_code ON pricing_records(currency_code)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pricing_records_feed_id ON pricing_records(feed_id)"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pricing_records_updated_by_user_id ON pricing_records(updated_by_user_id)"))
+
+                # Scalable fallback search for product_name ILIKE '%...%'
+                await conn.execute(
+                    text(
+                        """
+                        CREATE INDEX IF NOT EXISTS gin_pricing_records_product_name_trgm
+                        ON pricing_records USING GIN (product_name gin_trgm_ops)
+                        """
+                    )
+                )
+                # Helps large append-only time-range scans (works well with partitioning later too)
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS brin_pricing_records_date ON pricing_records USING BRIN (date)"))
+
+                if settings.enable_pricing_partitioning:
+                    await convert_pricing_records_to_partitioned(conn)
+                    await ensure_monthly_partitions(
+                        conn,
+                        table_name="pricing_records",
+                        partition_column="date",
+                        start_month=date.today().replace(day=1),
+                        months_backfill=settings.pricing_partition_months_backfill,
+                        months_ahead=settings.pricing_partition_months_ahead,
+                    )
+
+                # Audit table drift patches for older volumes
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_record_audits ADD COLUMN IF NOT EXISTS feed_id UUID NULL"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_record_audits ADD COLUMN IF NOT EXISTS source VARCHAR(32) NOT NULL DEFAULT 'manual'"))
+                await conn.execute(text("ALTER TABLE IF EXISTS pricing_record_audits ADD COLUMN IF NOT EXISTS reason TEXT NULL"))
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pricing_record_audits_feed_id ON pricing_record_audits(feed_id)"))
+
+                # Enforce non-negative price at DB level (if missing)
+                await conn.execute(
+                    text(
+                        """
+                        DO $$
+                        BEGIN
+                          IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'ck_pricing_records_price_non_negative'
+                          ) THEN
+                            ALTER TABLE pricing_records
+                            ADD CONSTRAINT ck_pricing_records_price_non_negative CHECK (price >= 0);
+                          END IF;
+                        END $$;
+                        """
+                    )
+                )
 
         await _retry(_db_ready, attempts=40, sleep_s=1.0)
 

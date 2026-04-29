@@ -22,6 +22,7 @@ router = APIRouter(prefix="/pricing", tags=["pricing"])
 @router.get("/search", response_model=PaginatedResponse[PricingRecordOut])
 async def search_pricing(
     q: str | None = Query(default=None),
+    country_code: str | None = Query(default=None),
     store_id: str | None = Query(default=None),
     sku: str | None = Query(default=None),
     date_from: date | None = Query(default=None),
@@ -36,6 +37,7 @@ async def search_pricing(
     try:
         res = await ts.search(
             q=q,
+            country_code=country_code,
             store_id=store_id,
             sku=sku,
             date_from=date_from,
@@ -66,6 +68,7 @@ async def search_pricing(
         rows, total = await svc.db_fallback_search(
             db,
             q=q,
+            country_code=country_code,
             store_id=store_id,
             sku=sku,
             date_from=date_from,

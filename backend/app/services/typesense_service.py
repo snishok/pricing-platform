@@ -47,10 +47,13 @@ class TypesenseService:
                 {
                     "id": str(r["id"]),
                     "db_id": str(r["id"]),
+                    "country_code": r.get("country_code", "XX"),
                     "store_id": r["store_id"],
                     "sku": r["sku"],
                     "product_name": r["product_name"],
                     "price": float(r["price"]),
+                    "currency_code": r.get("currency_code", "USD"),
+                    "tax_inclusive": bool(r.get("tax_inclusive", True)),
                     "date": _to_typesense_date(r["date"]),
                 }
             )
@@ -79,6 +82,7 @@ class TypesenseService:
         self,
         *,
         q: str | None,
+        country_code: str | None,
         store_id: str | None,
         sku: str | None,
         date_from: date | None,
@@ -87,6 +91,8 @@ class TypesenseService:
         per_page: int,
     ) -> dict[str, Any]:
         filter_parts: list[str] = []
+        if country_code:
+            filter_parts.append(f'country_code:="{country_code}"')
         if store_id:
             filter_parts.append(f'store_id:="{store_id}"')
         if sku:

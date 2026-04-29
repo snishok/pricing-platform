@@ -38,6 +38,16 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: str = "120/minute"
 
+    # Data normalization defaults (used when feeds omit these fields)
+    default_country_code: str = "XX"
+    default_currency_code: str = "USD"
+
+    # Partitioning & retention (production options; safe defaults)
+    enable_pricing_partitioning: bool = False
+    pricing_partition_months_ahead: int = 3
+    pricing_partition_months_backfill: int = 12
+    pricing_retention_days: int = 730
+
     def typesense_url(self) -> AnyUrl:
         return AnyUrl.build(
             scheme=self.typesense_protocol,

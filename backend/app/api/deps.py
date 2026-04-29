@@ -82,3 +82,34 @@ async def require_uploader_or_api_key(
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing credentials")
 
+
+class UploadActor:
+    def __init__(self, *, user_id: uuid.UUID | None, api_key_id: uuid.UUID | None) -> None:
+        self.user_id = user_id
+        self.api_key_id = api_key_id
+
+
+async def require_upload_actor(
+    db: AsyncSession = Depends(get_db_session),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    api_key: str | None = Depends(api_key_header),
+) -> UploadActor:
+    if credentials is not None:
+        ctx = await require_auth(credentials)
+        try:
+            role = UserRole(ctx.role)
+        except Exception:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid role")
+        if role not in UPLOAD_ROLES:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        return UploadActor(user_id=ctx.user_id, api_key_id=None)
+
+    if api_key:
+        try:
+            key = await ServiceApiKeyService().verify(db, raw_key=api_key, required_scope="upload")
+            return UploadActor(user_id=None, api_key_id=key.id)
+        except PermissionError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing credentials")
+

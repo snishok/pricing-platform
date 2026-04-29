@@ -58,22 +58,36 @@ class PricingService:
             raise LookupError("Record not found")
 
         old_values = {
+            "country_code": existing.country_code,
             "store_id": existing.store_id,
             "sku": existing.sku,
             "product_name": existing.product_name,
             "price": float(existing.price),
+            "currency_code": existing.currency_code,
+            "tax_inclusive": existing.tax_inclusive,
             "date": existing.date.isoformat(),
         }
+
+        update_reason = None
+        if "update_reason" in fields:
+            update_reason = fields.pop("update_reason")
+
+        fields["updated_by_user_id"] = user_id
+        fields["updated_source"] = "manual"
+        fields["update_reason"] = update_reason
 
         rec = await self._repo.update_fields(db, record_id, fields)
         if not rec:
             raise LookupError("Record not found")
 
         new_values = {
+            "country_code": rec.country_code,
             "store_id": rec.store_id,
             "sku": rec.sku,
             "product_name": rec.product_name,
             "price": float(rec.price),
+            "currency_code": rec.currency_code,
+            "tax_inclusive": rec.tax_inclusive,
             "date": rec.date.isoformat(),
         }
 
@@ -81,6 +95,9 @@ class PricingService:
             PricingRecordAudit(
                 record_id=rec.id,
                 user_id=user_id,
+                feed_id=None,
+                source="manual",
+                reason=update_reason,
                 old_values=old_values,
                 new_values=new_values,
             )
@@ -90,10 +107,13 @@ class PricingService:
         await typesense.update_pricing_record(
             record_id=str(rec.id),
             fields={
+                "country_code": rec.country_code,
                 "store_id": rec.store_id,
                 "sku": rec.sku,
                 "product_name": rec.product_name,
                 "price": float(rec.price),
+                "currency_code": rec.currency_code,
+                "tax_inclusive": rec.tax_inclusive,
                 "date": rec.date,
             },
         )
@@ -105,6 +125,7 @@ class PricingService:
         db: AsyncSession,
         *,
         q: str | None,
+        country_code: str | None,
         store_id: str | None,
         sku: str | None,
         date_from: date | None,
@@ -112,7 +133,9 @@ class PricingService:
         page: int,
         per_page: int,
     ) -> tuple[list[PricingRecord], int]:
-        base = self._repo.db_fallback_search_stmt(q=q, store_id=store_id, sku=sku, date_from=date_from, date_to=date_to)
+        base = self._repo.db_fallback_search_stmt(
+            q=q, country_code=country_code, store_id=store_id, sku=sku, date_from=date_from, date_to=date_to
+        )
         count_stmt = select(func.count()).select_from(base.subquery())
         total = int((await db.execute(count_stmt)).scalar_one())
 
@@ -132,8 +155,8 @@ class PricingService:
         chunk_rows: list[dict[str, Any]],
         typesense: TypesenseService,
     ) -> int:
-        await self._repo.bulk_upsert_by_store_sku_date(db, chunk_rows)
+        canonical = await self._repo.bulk_upsert_by_store_sku_date(db, chunk_rows)
         await db.commit()
-        await typesense.upsert_pricing_records(chunk_rows)
-        return len(chunk_rows)
+        await typesense.upsert_pricing_records(canonical)
+        return len(canonical)
 
