@@ -29,6 +29,32 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
+### One-command Docker deploy (with seed + tests)
+These scripts are designed for a fresh clone: they build + start the full Docker stack, wait for `/api/readyz`, seed **10,000 demo products** (Postgres + Typesense), run backend tests, and do a small smoke check.
+
+- **Windows (PowerShell)**:
+
+```powershell
+cd pricing-platform
+.\deploy-windows.ps1
+```
+
+- **macOS / Linux (bash)**:
+
+```bash
+cd pricing-platform
+chmod +x ./deploy-mac.sh
+./deploy-mac.sh
+```
+
+Optional: if you want the Compose **Tailscale** service to join your tailnet, export `TS_AUTHKEY` before running (this enables the `tailscale` Compose profile):
+
+```bash
+export TS_AUTHKEY="tskey-auth-..."
+export TS_HOSTNAME="pricing-platform-dev" # optional
+./deploy-mac.sh
+```
+
 ### Demo users (seeded)
 When running via Docker Compose, the backend seeds 4 demo users (one per role):
 

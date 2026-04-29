@@ -75,9 +75,10 @@ async def upload_csv(
 
         # streaming-ish processing using chunksize; pandas uses python file-like object
         # enforce dtype for critical cols; parse date
+        # NOTE: asyncpg limits bind parameters to 32767; keep chunk size small enough for bulk upserts.
         chunks = pd.read_csv(
             io.BytesIO(raw),
-            chunksize=5000,
+            chunksize=2000,
             dtype={"store_id": "string", "sku": "string", "product_name": "string"},
         )
         row_offset = 0  # 0-based data-row offset (header excluded)

@@ -103,7 +103,24 @@ services:
       timeout: 5s
       retries: 30
 
+  tailscale:
+    image: tailscale/tailscale:stable
+    profiles: ["tailscale"]
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-pricing-platform}
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:-}
+      TS_STATE_DIR: /var/lib/tailscale
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - ./infra/docker/tailscale/entrypoint.sh:/entrypoint.sh:ro
+    command: ["sh", "/entrypoint.sh"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
 volumes:
   postgres_data:
   typesense_data:
+  tailscale_state:
 
