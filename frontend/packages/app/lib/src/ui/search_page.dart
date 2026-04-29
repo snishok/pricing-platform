@@ -25,6 +25,7 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
+  static final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
   final _q = TextEditingController();
   DateTime? _from;
   DateTime? _to;
@@ -32,6 +33,9 @@ class _SearchPageState extends State<SearchPage> {
   final Set<String> _selectedStoreIds = <String>{};
   final Set<String> _selectedSkus = <String>{};
   Timer? _debounce;
+  List<PricingRecord>? _lastSortedSource;
+  _SortOption? _lastSortedOption;
+  List<_PricingRowVm> _sortedCache = const [];
 
   @override
   void dispose() {
@@ -46,12 +50,12 @@ class _SearchPageState extends State<SearchPage> {
     // Initial load (facets + initial results) after first build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PricingState>().refreshMeta(
-            q: _q.text.trim(),
-            storeIds: _selectedStoreIds.toList(growable: false),
-            skus: _selectedSkus.toList(growable: false),
-            dateFrom: _from,
-            dateTo: _to,
-          );
+        q: _q.text.trim(),
+        storeIds: _selectedStoreIds.toList(growable: false),
+        skus: _selectedSkus.toList(growable: false),
+        dateFrom: _from,
+        dateTo: _to,
+      );
       _runSearch(page: 1);
     });
   }
@@ -63,7 +67,13 @@ class _SearchPageState extends State<SearchPage> {
       lastDate: DateTime(2100),
       initialDate: _from ?? initial,
     );
-    if (picked != null) setState(() => _from = picked);
+    if (picked == null) return;
+    setState(() {
+      _from = picked;
+      if (_to != null && picked.isAfter(_to!)) {
+        _to = picked;
+      }
+    });
   }
 
   Future<void> _pickToDate(DateTime initial) async {
@@ -73,29 +83,78 @@ class _SearchPageState extends State<SearchPage> {
       lastDate: DateTime(2100),
       initialDate: _to ?? initial,
     );
-    if (picked != null) setState(() => _to = picked);
+    if (picked == null) return;
+    setState(() {
+      _to = picked;
+      if (_from != null && picked.isBefore(_from!)) {
+        _from = picked;
+      }
+    });
   }
 
   void _runSearch({int? page, int? perPage}) {
     context.read<PricingState>().search(
-          q: _q.text.trim(),
-          storeIds: _selectedStoreIds.toList(growable: false),
-          skus: _selectedSkus.toList(growable: false),
-          dateFrom: _from,
-          dateTo: _to,
-          page: page ?? 1,
-          perPage: perPage,
-        );
+      q: _q.text.trim(),
+      storeIds: _selectedStoreIds.toList(growable: false),
+      skus: _selectedSkus.toList(growable: false),
+      dateFrom: _from,
+      dateTo: _to,
+      page: page ?? 1,
+      perPage: perPage,
+    );
   }
 
   void _refreshMeta() {
     context.read<PricingState>().refreshMeta(
-          q: _q.text.trim(),
-          storeIds: _selectedStoreIds.toList(growable: false),
-          skus: _selectedSkus.toList(growable: false),
-          dateFrom: _from,
-          dateTo: _to,
-        );
+      q: _q.text.trim(),
+      storeIds: _selectedStoreIds.toList(growable: false),
+      skus: _selectedSkus.toList(growable: false),
+      dateFrom: _from,
+      dateTo: _to,
+    );
+  }
+
+  void _toggleStoreId(String value, bool checked) {
+    setState(() {
+      if (checked) {
+        _selectedStoreIds.add(value);
+      } else {
+        _selectedStoreIds.remove(value);
+      }
+    });
+    _refreshMeta();
+    _runSearch(page: 1);
+  }
+
+  void _toggleSku(String value, bool checked) {
+    setState(() {
+      if (checked) {
+        _selectedSkus.add(value);
+      } else {
+        _selectedSkus.remove(value);
+      }
+    });
+    _refreshMeta();
+    _runSearch(page: 1);
+  }
+
+  void _clearDates() {
+    setState(() {
+      _from = null;
+      _to = null;
+    });
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _q.clear();
+      _from = null;
+      _to = null;
+      _selectedStoreIds.clear();
+      _selectedSkus.clear();
+    });
+    _refreshMeta();
+    _runSearch(page: 1);
   }
 
   void _debouncedMetaOnly() {
@@ -103,30 +162,42 @@ class _SearchPageState extends State<SearchPage> {
     _debounce = Timer(const Duration(milliseconds: 320), () {
       if (!mounted) return;
       context.read<PricingState>().refreshMeta(
-            q: _q.text.trim(),
-            storeIds: _selectedStoreIds.toList(growable: false),
-            skus: _selectedSkus.toList(growable: false),
-            dateFrom: _from,
-            dateTo: _to,
-            updateFacets: false,
-          );
+        q: _q.text.trim(),
+        storeIds: _selectedStoreIds.toList(growable: false),
+        skus: _selectedSkus.toList(growable: false),
+        dateFrom: _from,
+        dateTo: _to,
+        updateFacets: false,
+      );
     });
   }
 
   List<_PricingRowVm> _buildSortedItems(PricingState state) {
-    final items = state.items.map(_PricingRowVm.fromRecord).toList(growable: false);
+    if (identical(_lastSortedSource, state.items) &&
+        _lastSortedOption == _sort) {
+      return _sortedCache;
+    }
+    final items = state.items
+        .map(_PricingRowVm.fromRecord)
+        .toList(growable: false);
     int byProduct(_PricingRowVm a, _PricingRowVm b) =>
         a.productName.toLowerCase().compareTo(b.productName.toLowerCase());
 
-    return switch (_sort) {
+    final sorted = switch (_sort) {
       _SortOption.relevance => items,
-      _SortOption.priceLowHigh => (items..sort((a, b) => a.price.compareTo(b.price))),
-      _SortOption.priceHighLow => (items..sort((a, b) => b.price.compareTo(a.price))),
+      _SortOption.priceLowHigh =>
+        (items..sort((a, b) => a.price.compareTo(b.price))),
+      _SortOption.priceHighLow =>
+        (items..sort((a, b) => b.price.compareTo(a.price))),
       _SortOption.dateNew => (items..sort((a, b) => b.date.compareTo(a.date))),
       _SortOption.dateOld => (items..sort((a, b) => a.date.compareTo(b.date))),
       _SortOption.productAZ => (items..sort(byProduct)),
       _SortOption.productZA => (items..sort((a, b) => -byProduct(a, b))),
     };
+    _lastSortedSource = state.items;
+    _lastSortedOption = _sort;
+    _sortedCache = sorted;
+    return sorted;
   }
 
   Future<void> _openFiltersSheet() async {
@@ -137,60 +208,28 @@ class _SearchPageState extends State<SearchPage> {
       builder: (context) {
         return SafeArea(
           child: Padding(
-            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
             child: SingleChildScrollView(
               child: _FiltersPanel(
-                q: _q,
                 from: _from,
                 to: _to,
                 storeIdFacets: context.watch<PricingState>().storeIdFacets,
                 skuFacets: context.watch<PricingState>().skuFacets,
                 selectedStoreIds: _selectedStoreIds,
                 selectedSkus: _selectedSkus,
-                onToggleStoreId: (v, checked) {
-                  setState(() {
-                    if (checked) {
-                      _selectedStoreIds.add(v);
-                    } else {
-                      _selectedStoreIds.remove(v);
-                    }
-                  });
-                  _refreshMeta();
-                  _runSearch(page: 1);
-                },
-                onToggleSku: (v, checked) {
-                  setState(() {
-                    if (checked) {
-                      _selectedSkus.add(v);
-                    } else {
-                      _selectedSkus.remove(v);
-                    }
-                  });
-                  _refreshMeta();
-                  _runSearch(page: 1);
-                },
+                onToggleStoreId: _toggleStoreId,
+                onToggleSku: _toggleSku,
                 onPickFrom: () => _pickFromDate(DateTime.now()),
                 onPickTo: () => _pickToDate(DateTime.now()),
-                onClearDates: () => setState(() {
-                  _from = null;
-                  _to = null;
-                }),
+                onClearDates: _clearDates,
                 onSearch: () {
                   Navigator.pop(context);
                   _runSearch(page: 1);
                 },
-                onClearAll: () {
-                  setState(() {
-                    _q.clear();
-                    _from = null;
-                    _to = null;
-                    _selectedStoreIds.clear();
-                    _selectedSkus.clear();
-                  });
-                  _refreshMeta();
-                  _runSearch(page: 1);
-                },
-                isLoading: context.read<PricingState>().isLoading,
+                onClearAll: _clearAllFilters,
+                isLoading: context.watch<PricingState>().isLoading,
               ),
             ),
           ),
@@ -202,7 +241,8 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<PricingState>();
-    final dateFmt = DateFormat('yyyy-MM-dd');
+    final canEdit = context.watch<AuthState>().canEdit;
+    final dateFmt = _dateFmt;
     final items = _buildSortedItems(state);
 
     return LayoutBuilder(
@@ -214,53 +254,19 @@ class _SearchPageState extends State<SearchPage> {
         );
 
         final filtersPanel = _FiltersPanel(
-          q: _q,
           from: _from,
           to: _to,
           storeIdFacets: state.storeIdFacets,
           skuFacets: state.skuFacets,
           selectedStoreIds: _selectedStoreIds,
           selectedSkus: _selectedSkus,
-          onToggleStoreId: (v, checked) {
-            setState(() {
-              if (checked) {
-                _selectedStoreIds.add(v);
-              } else {
-                _selectedStoreIds.remove(v);
-              }
-            });
-            _refreshMeta();
-            _runSearch(page: 1);
-          },
-          onToggleSku: (v, checked) {
-            setState(() {
-              if (checked) {
-                _selectedSkus.add(v);
-              } else {
-                _selectedSkus.remove(v);
-              }
-            });
-            _refreshMeta();
-            _runSearch(page: 1);
-          },
+          onToggleStoreId: _toggleStoreId,
+          onToggleSku: _toggleSku,
           onPickFrom: () => _pickFromDate(DateTime.now()),
           onPickTo: () => _pickToDate(DateTime.now()),
-          onClearDates: () => setState(() {
-            _from = null;
-            _to = null;
-          }),
+          onClearDates: _clearDates,
           onSearch: () => _runSearch(page: 1),
-          onClearAll: () {
-            setState(() {
-              _q.clear();
-              _from = null;
-              _to = null;
-              _selectedStoreIds.clear();
-              _selectedSkus.clear();
-            });
-            _refreshMeta();
-            _runSearch(page: 1);
-          },
+          onClearAll: _clearAllFilters,
           isLoading: state.isLoading,
         );
 
@@ -270,12 +276,7 @@ class _SearchPageState extends State<SearchPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (wide) ...[
-                SizedBox(
-                  width: 332,
-                  child: _SurfaceCard(
-                    child: filtersPanel,
-                  ),
-                ),
+                SizedBox(width: 332, child: _SurfaceCard(child: filtersPanel)),
                 const SizedBox(width: 14),
               ],
               Expanded(
@@ -289,14 +290,18 @@ class _SearchPageState extends State<SearchPage> {
                       onSortChanged: (next) => setState(() => _sort = next),
                       onOpenFilters: wide ? null : _openFiltersSheet,
                     ),
-                    if (state.isLoading) const LinearProgressIndicator(minHeight: 2),
+                    if (state.isLoading)
+                      const LinearProgressIndicator(minHeight: 2),
                     if (state.error != null) ...[
                       const SizedBox(height: 10),
                       _ErrorBanner(message: state.error!),
                     ],
                     const SizedBox(height: 10),
                     _SurfaceCard(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
                       child: _SearchBox(
                         controller: _q,
                         isLoading: state.isLoading,
@@ -305,7 +310,9 @@ class _SearchPageState extends State<SearchPage> {
                         onChanged: (_) => _debouncedMetaOnly(),
                         onSubmit: (v) {
                           _q.text = v;
-                          _q.selection = TextSelection.collapsed(offset: _q.text.length);
+                          _q.selection = TextSelection.collapsed(
+                            offset: _q.text.length,
+                          );
                           _refreshMeta();
                           _runSearch(page: 1);
                         },
@@ -317,17 +324,31 @@ class _SearchPageState extends State<SearchPage> {
                         padding: EdgeInsets.zero,
                         child: items.isEmpty
                             ? _EmptyState(
-                                hasSearched: state.total > 0 || state.items.isNotEmpty || state.isLoading || state.error != null,
+                                hasSearched:
+                                    !state.isLoading &&
+                                    (state.total > 0 ||
+                                        state.items.isNotEmpty ||
+                                        state.error != null),
                                 onSearch: () => _runSearch(page: 1),
                               )
                             : ListView.separated(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 itemCount: items.length,
-                                separatorBuilder: (_, i) => const Divider(height: 1),
+                                separatorBuilder: (_, i) =>
+                                    const Divider(height: 1),
                                 itemBuilder: (context, i) => _ResultRow(
                                   vm: items[i],
                                   dateFmt: dateFmt,
-                                  onEdit: context.read<AuthState>().canEdit ? () => _editRecord(context, state, items[i], dateFmt) : null,
+                                  onEdit: canEdit
+                                      ? () => _editRecord(
+                                          context,
+                                          state,
+                                          items[i],
+                                          dateFmt,
+                                        )
+                                      : null,
                                 ),
                               ),
                       ),
@@ -337,8 +358,12 @@ class _SearchPageState extends State<SearchPage> {
                       page: state.page,
                       perPage: state.perPage,
                       total: state.total,
-                      onPrev: state.page <= 1 || state.isLoading ? null : () => _runSearch(page: state.page - 1),
-                      onNext: _canGoNext(state) && !state.isLoading ? () => _runSearch(page: state.page + 1) : null,
+                      onPrev: state.page <= 1 || state.isLoading
+                          ? null
+                          : () => _runSearch(page: state.page - 1),
+                      onNext: _canGoNext(state) && !state.isLoading
+                          ? () => _runSearch(page: state.page + 1)
+                          : null,
                       onPerPageChanged: state.isLoading
                           ? null
                           : (v) {
@@ -362,74 +387,103 @@ bool _canGoNext(PricingState state) {
   return state.page < maxPage;
 }
 
-Future<void> _editRecord(BuildContext context, PricingState state, _PricingRowVm r, DateFormat dateFmt) async {
+Future<void> _editRecord(
+  BuildContext context,
+  PricingState state,
+  _PricingRowVm r,
+  DateFormat dateFmt,
+) async {
   final storeCtrl = TextEditingController(text: r.storeId);
   final skuCtrl = TextEditingController(text: r.sku);
   final nameCtrl = TextEditingController(text: r.productName);
   final priceCtrl = TextEditingController(text: r.price.toStringAsFixed(2));
-  DateTime pickedDate = r.date;
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Update record'),
-        content: SizedBox(
-          width: 460,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: storeCtrl, decoration: const InputDecoration(labelText: 'Store ID')),
-              const SizedBox(height: 8),
-              TextField(controller: skuCtrl, decoration: const InputDecoration(labelText: 'SKU')),
-              const SizedBox(height: 8),
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Product name')),
-              const SizedBox(height: 8),
-              TextField(
-                controller: priceCtrl,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Price'),
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final next = await showDatePicker(
-                      context: context,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2100),
-                      initialDate: pickedDate,
-                    );
-                    if (next != null) setState(() => pickedDate = next);
-                  },
-                  child: Text('Date: ${dateFmt.format(pickedDate)}'),
+  try {
+    DateTime pickedDate = r.date;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Update record'),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: storeCtrl,
+                  decoration: const InputDecoration(labelText: 'Store ID'),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: skuCtrl,
+                  decoration: const InputDecoration(labelText: 'SKU'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Product name'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: priceCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(labelText: 'Price'),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      final next = await showDatePicker(
+                        context: context,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                        initialDate: pickedDate,
+                      );
+                      if (next != null) setState(() => pickedDate = next);
+                    },
+                    child: Text('Date: ${dateFmt.format(pickedDate)}'),
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Save')),
-        ],
       ),
-    ),
-  );
-  if (ok != true) return;
-  final parsedPrice = double.tryParse(priceCtrl.text.trim());
-  if (parsedPrice == null || parsedPrice <= 0) return;
-  final nextStore = storeCtrl.text.trim();
-  final nextSku = skuCtrl.text.trim();
-  final nextName = nameCtrl.text.trim();
-  if (nextStore.isEmpty || nextSku.isEmpty || nextName.isEmpty) return;
-  await state.updateRecord(
-    r.id,
-    storeId: nextStore,
-    sku: nextSku,
-    productName: nextName,
-    price: parsedPrice,
-    date: pickedDate,
-  );
+    );
+    if (ok != true || !context.mounted) return;
+    final parsedPrice = double.tryParse(priceCtrl.text.trim());
+    if (parsedPrice == null || parsedPrice <= 0) return;
+    final nextStore = storeCtrl.text.trim();
+    final nextSku = skuCtrl.text.trim();
+    final nextName = nameCtrl.text.trim();
+    if (nextStore.isEmpty || nextSku.isEmpty || nextName.isEmpty) return;
+    await state.updateRecord(
+      r.id,
+      storeId: nextStore,
+      sku: nextSku,
+      productName: nextName,
+      price: parsedPrice,
+      date: pickedDate,
+    );
+  } finally {
+    storeCtrl.dispose();
+    skuCtrl.dispose();
+    nameCtrl.dispose();
+    priceCtrl.dispose();
+  }
 }
 
 class _PricingRowVm {
@@ -450,20 +504,23 @@ class _PricingRowVm {
   });
 
   static _PricingRowVm fromRecord(PricingRecord r) => _PricingRowVm(
-        id: r.id,
-        storeId: r.storeId,
-        sku: r.sku,
-        productName: r.productName,
-        price: r.price,
-        date: r.date,
-      );
+    id: r.id,
+    storeId: r.storeId,
+    sku: r.sku,
+    productName: r.productName,
+    price: r.price,
+    date: r.date,
+  );
 }
 
 class _SurfaceCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
 
-  const _SurfaceCard({required this.child, this.padding = const EdgeInsets.all(12)});
+  const _SurfaceCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -472,7 +529,9 @@ class _SurfaceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.65)),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.65),
+        ),
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -508,15 +567,26 @@ class _TopBar extends StatelessWidget {
           Expanded(
             child: Row(
               children: [
-                Text('Results', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  'Results',
+                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.secondaryContainer.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text('$total', style: t.labelLarge?.copyWith(color: scheme.onSecondaryContainer)),
+                  child: Text(
+                    '$total',
+                    style: t.labelLarge?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                    ),
+                  ),
                 ),
                 if (!wide) ...[
                   const SizedBox(width: 10),
@@ -549,12 +619,12 @@ class _SortDropdown extends StatelessWidget {
   String _label(_SortOption v) {
     return switch (v) {
       _SortOption.relevance => 'Relevance',
-      _SortOption.priceLowHigh => 'Price: Low → High',
-      _SortOption.priceHighLow => 'Price: High → Low',
-      _SortOption.dateNew => 'Date: Newest',
-      _SortOption.dateOld => 'Date: Oldest',
-      _SortOption.productAZ => 'Product: A → Z',
-      _SortOption.productZA => 'Product: Z → A',
+      _SortOption.priceLowHigh => 'Price (page): Low → High',
+      _SortOption.priceHighLow => 'Price (page): High → Low',
+      _SortOption.dateNew => 'Date (page): Newest',
+      _SortOption.dateOld => 'Date (page): Oldest',
+      _SortOption.productAZ => 'Product (page): A → Z',
+      _SortOption.productZA => 'Product (page): Z → A',
     };
   }
 
@@ -563,14 +633,11 @@ class _SortDropdown extends StatelessWidget {
     return DropdownButtonHideUnderline(
       child: DropdownButton<_SortOption>(
         value: value,
-        onChanged: onChanged == null ? null : (v) => v == null ? null : onChanged!(v),
+        onChanged: onChanged == null
+            ? null
+            : (v) => v == null ? null : onChanged!(v),
         items: _SortOption.values
-            .map(
-              (v) => DropdownMenuItem(
-                value: v,
-                child: Text(_label(v)),
-              ),
-            )
+            .map((v) => DropdownMenuItem(value: v, child: Text(_label(v))))
             .toList(growable: false),
       ),
     );
@@ -578,7 +645,7 @@ class _SortDropdown extends StatelessWidget {
 }
 
 class _FiltersPanel extends StatelessWidget {
-  final TextEditingController q;
+  static final DateFormat _dateFmt = DateFormat('yyyy-MM-dd');
   final DateTime? from;
   final DateTime? to;
   final List<FacetValue> storeIdFacets;
@@ -595,7 +662,6 @@ class _FiltersPanel extends StatelessWidget {
   final bool isLoading;
 
   const _FiltersPanel({
-    required this.q,
     required this.from,
     required this.to,
     required this.storeIdFacets,
@@ -647,14 +713,17 @@ class _FiltersPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final dateFmt = DateFormat('yyyy-MM-dd');
+    final dateFmt = _dateFmt;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Text('Filters', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              'Filters',
+              style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+            ),
             const Spacer(),
             TextButton(
               onPressed: isLoading ? null : onClearAll,
@@ -687,7 +756,10 @@ class _FiltersPanel extends StatelessWidget {
         const SizedBox(height: 12),
         _FilterSection(
           title: 'Date range',
-          trailing: TextButton(onPressed: isLoading ? null : onClearDates, child: const Text('Reset')),
+          trailing: TextButton(
+            onPressed: isLoading ? null : onClearDates,
+            child: const Text('Reset'),
+          ),
           child: Column(
             children: [
               Row(
@@ -698,7 +770,9 @@ class _FiltersPanel extends StatelessWidget {
                       icon: const Icon(Icons.calendar_today, size: 18),
                       label: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(from == null ? 'From date' : dateFmt.format(from!)),
+                        child: Text(
+                          from == null ? 'From date' : dateFmt.format(from!),
+                        ),
                       ),
                     ),
                   ),
@@ -709,7 +783,9 @@ class _FiltersPanel extends StatelessWidget {
                       icon: const Icon(Icons.event, size: 18),
                       label: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(to == null ? 'To date' : dateFmt.format(to!)),
+                        child: Text(
+                          to == null ? 'To date' : dateFmt.format(to!),
+                        ),
                       ),
                     ),
                   ),
@@ -786,7 +862,11 @@ class _SearchBox extends StatelessWidget {
       fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
         // Keep external controller in sync so existing search plumbing works.
         if (textController.text != controller.text) {
-          textController.value = controller.value;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (textController.text != controller.text) {
+              textController.value = controller.value;
+            }
+          });
         }
         void sync(String v) {
           controller.value = textController.value;
@@ -805,19 +885,23 @@ class _SearchBox extends StatelessWidget {
             suffixIcon: isLoading
                 ? const Padding(
                     padding: EdgeInsets.all(12),
-                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 : (textController.text.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          textController.clear();
-                          controller.clear();
-                          onChanged('');
-                        },
-                        icon: const Icon(Icons.close),
-                      )),
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () {
+                            textController.clear();
+                            controller.clear();
+                            onChanged('');
+                          },
+                          icon: const Icon(Icons.close),
+                        )),
           ),
         );
       },
@@ -836,14 +920,23 @@ class _SearchBox extends StatelessWidget {
                 padding: EdgeInsets.zero,
                 shrinkWrap: true,
                 itemCount: options.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final s = options[i];
-                  final isRecent = recent.any((r) => r.toLowerCase() == s.toLowerCase());
+                  final isRecent = recent.any(
+                    (r) => r.toLowerCase() == s.toLowerCase(),
+                  );
                   return ListTile(
                     dense: true,
-                    leading: Icon(isRecent ? Icons.history : Icons.search, size: 18),
-                    title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    leading: Icon(
+                      isRecent ? Icons.history : Icons.search,
+                      size: 18,
+                    ),
+                    title: Text(
+                      s,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     onTap: () => onSelected(s),
                   );
                 },
@@ -861,14 +954,22 @@ class _FilterSection extends StatelessWidget {
   final Widget child;
   final Widget? trailing;
 
-  const _FilterSection({required this.title, required this.child, this.trailing});
+  const _FilterSection({
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.55)),
+        border: Border.all(
+          color: Theme.of(
+            context,
+          ).colorScheme.outlineVariant.withValues(alpha: 0.55),
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
@@ -878,7 +979,10 @@ class _FilterSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(title, style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  title,
+                  style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                ),
                 const Spacer(),
                 trailing ?? const SizedBox.shrink(),
               ],
@@ -897,7 +1001,11 @@ class _ResultRow extends StatelessWidget {
   final DateFormat dateFmt;
   final VoidCallback? onEdit;
 
-  const _ResultRow({required this.vm, required this.dateFmt, required this.onEdit});
+  const _ResultRow({
+    required this.vm,
+    required this.dateFmt,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -943,7 +1051,12 @@ class _ResultRow extends StatelessWidget {
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 4),
-                Text('Price', style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(
+                  'Price',
+                  style: t.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 10),
                 IconButton(
                   tooltip: 'Edit record',
@@ -974,14 +1087,22 @@ class _ChipPair extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.55)),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.55),
+        ),
       ),
       child: RichText(
         text: TextSpan(
           style: t.labelMedium?.copyWith(color: scheme.onSurfaceVariant),
           children: [
-            TextSpan(text: '$label  ', style: t.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
-            TextSpan(text: value, style: t.labelMedium?.copyWith(color: scheme.onSurface)),
+            TextSpan(
+              text: '$label  ',
+              style: t.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(
+              text: value,
+              style: t.labelMedium?.copyWith(color: scheme.onSurface),
+            ),
           ],
         ),
       ),
@@ -1015,14 +1136,24 @@ class _BottomPager extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          Text('Page $page of $maxPage', style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            'Page $page of $maxPage',
+            style: t.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+          ),
           const Spacer(),
-          Text('Rows', style: t.labelLarge?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            'Rows',
+            style: t.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(width: 8),
           DropdownButtonHideUnderline(
             child: DropdownButton<int>(
               value: perPage,
-              onChanged: onPerPageChanged == null ? null : (v) => v == null ? null : onPerPageChanged!(v),
+              onChanged: onPerPageChanged == null
+                  ? null
+                  : (v) => v == null ? null : onPerPageChanged!(v),
               items: const [10, 25, 50, 100]
                   .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
                   .toList(growable: false),
@@ -1065,7 +1196,12 @@ class _ErrorBanner extends StatelessWidget {
           children: [
             Icon(Icons.error_outline, color: scheme.onErrorContainer),
             const SizedBox(width: 10),
-            Expanded(child: Text(message, style: TextStyle(color: scheme.onErrorContainer))),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(color: scheme.onErrorContainer),
+              ),
+            ),
           ],
         ),
       ),
@@ -1084,7 +1220,9 @@ class _EmptyState extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final title = hasSearched ? 'No results' : 'Search pricing records';
-    final body = hasSearched ? 'Try adjusting filters, or clear them and search again.' : 'Use filters to find records, then sort and edit quickly.';
+    final body = hasSearched
+        ? 'Try adjusting filters, or clear them and search again.'
+        : 'Use filters to find records, then sort and edit quickly.';
 
     return Center(
       child: ConstrainedBox(
@@ -1104,11 +1242,22 @@ class _EmptyState extends StatelessWidget {
                 child: Icon(Icons.search, color: scheme.onPrimaryContainer),
               ),
               const SizedBox(height: 12),
-              Text(title, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                title,
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+              ),
               const SizedBox(height: 6),
-              Text(body, textAlign: TextAlign.center, style: t.bodyMedium?.copyWith(color: scheme.onSurfaceVariant)),
+              Text(
+                body,
+                textAlign: TextAlign.center,
+                style: t.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
               const SizedBox(height: 12),
-              FilledButton.icon(onPressed: onSearch, icon: const Icon(Icons.search), label: const Text('Search')),
+              FilledButton.icon(
+                onPressed: onSearch,
+                icon: const Icon(Icons.search),
+                label: const Text('Search'),
+              ),
             ],
           ),
         ),
@@ -1116,4 +1265,3 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
-

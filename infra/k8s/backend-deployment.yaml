@@ -26,12 +26,31 @@ spec:
       labels:
         app: backend
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: backend
-          image: your-dockerhub-user/pricing-backend:latest
+          image: your-dockerhub-user/pricing-backend:0.1.0
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
           env:
             - name: WEB_CONCURRENCY
               value: "4"
@@ -69,7 +88,7 @@ spec:
             - name: RATE_LIMIT_ENABLED
               value: "true"
             - name: RATE_LIMIT_PER_MINUTE
-              value: 600/minute
+              value: "600/minute"
             - name: RATE_LIMIT_STORAGE_URI
               value: redis://redis:6379/0
             - name: SEARCH_CACHE_TTL_SECONDS

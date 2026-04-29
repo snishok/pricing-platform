@@ -5,6 +5,8 @@ class PricingState extends ChangeNotifier {
   final ApiClient _api;
   bool _loading = false;
   String? _error;
+  int _searchRequestId = 0;
+  int _metaRequestId = 0;
 
   List<PricingRecord> _items = const [];
   int _page = 1;
@@ -39,6 +41,7 @@ class PricingState extends ChangeNotifier {
     int? page,
     int? perPage,
   }) async {
+    final requestId = ++_searchRequestId;
     _loading = true;
     _error = null;
     notifyListeners();
@@ -52,6 +55,7 @@ class PricingState extends ChangeNotifier {
         page: page ?? _page,
         perPage: perPage ?? _perPage,
       );
+      if (requestId != _searchRequestId) return;
       _items = res.items;
       _page = res.page;
       _perPage = res.perPage;
@@ -60,10 +64,13 @@ class PricingState extends ChangeNotifier {
       final qTrim = (q ?? '').trim();
       if (qTrim.isNotEmpty) _rememberRecentSearch(qTrim);
     } catch (e) {
+      if (requestId != _searchRequestId) return;
       _error = 'Search failed';
     } finally {
-      _loading = false;
-      notifyListeners();
+      if (requestId == _searchRequestId) {
+        _loading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -75,6 +82,7 @@ class PricingState extends ChangeNotifier {
     DateTime? dateTo,
     bool updateFacets = true,
   }) async {
+    final requestId = ++_metaRequestId;
     try {
       final meta = await _api.searchPricingMeta(
         q: q,
@@ -83,6 +91,7 @@ class PricingState extends ChangeNotifier {
         dateFrom: dateFrom,
         dateTo: dateTo,
       );
+      if (requestId != _metaRequestId) return;
       _suggestions = meta.suggestions;
       if (updateFacets) {
         _storeIdFacets = meta.storeIdFacets;
@@ -110,19 +119,8 @@ class PricingState extends ChangeNotifier {
     // Keep most-recent-first, unique.
     _recentSearches.removeWhere((e) => e.toLowerCase() == q.toLowerCase());
     _recentSearches.insert(0, q);
-    if (_recentSearches.length > 8) _recentSearches.removeRange(8, _recentSearches.length);
-  }
-
-  Future<void> updatePrice(String id, double price) async {
-    _error = null;
-    notifyListeners();
-    try {
-      final updated = await _api.updatePricingRecord(id, price: price);
-      _items = _items.map((e) => e.id == id ? updated : e).toList(growable: false);
-      notifyListeners();
-    } catch (e) {
-      _error = 'Update failed';
-      notifyListeners();
+    if (_recentSearches.length > 8) {
+      _recentSearches.removeRange(8, _recentSearches.length);
     }
   }
 
@@ -145,7 +143,9 @@ class PricingState extends ChangeNotifier {
         price: price,
         date: date,
       );
-      _items = _items.map((e) => e.id == id ? updated : e).toList(growable: false);
+      _items = _items
+          .map((e) => e.id == id ? updated : e)
+          .toList(growable: false);
       notifyListeners();
     } catch (e) {
       _error = 'Update failed';
@@ -153,4 +153,3 @@ class PricingState extends ChangeNotifier {
     }
   }
 }
-

@@ -18,8 +18,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     try:
         token = await AuthService().login(db, email=str(payload.email).lower(), password=payload.password)
         return TokenResponse(access_token=token)
-    except PermissionError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials") from exc
 
 
 @router.get("/me")

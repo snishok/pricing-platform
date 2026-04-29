@@ -126,7 +126,7 @@ async def upload_csv(
             feed.error_report = str(e)
             db.add(feed)
             await db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -145,5 +145,5 @@ async def upload_csv(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid CSV payload ({type(e).__name__})",
-        )
+        ) from e
 

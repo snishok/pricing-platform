@@ -25,9 +25,14 @@ spec:
       labels:
         app: typesense
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: typesense
           image: typesense/typesense:30.2
+          imagePullPolicy: Always
           args:
             - --data-dir=/data
             - --api-key=$(TYPESENSE_API_KEY)
@@ -41,6 +46,31 @@ spec:
           ports:
             - containerPort: 8108
               name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8108
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8108
+            initialDelaySeconds: 15
+            periodSeconds: 20
           volumeMounts:
             - name: data
               mountPath: /data

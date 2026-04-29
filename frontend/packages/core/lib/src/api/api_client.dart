@@ -10,7 +10,8 @@ class ApiClient {
   final http.Client _http;
   String? _accessToken;
 
-  ApiClient({required this.baseUri, http.Client? httpClient}) : _http = httpClient ?? http.Client();
+  ApiClient({required this.baseUri, http.Client? httpClient})
+    : _http = httpClient ?? http.Client();
 
   void setAccessToken(String? token) => _accessToken = token;
 
@@ -21,7 +22,10 @@ class ApiClient {
     return headers;
   }
 
-  Future<String> login({required String email, required String password}) async {
+  Future<String> login({
+    required String email,
+    required String password,
+  }) async {
     final res = await _http.post(
       baseUri.resolve('auth/login'),
       headers: _headers(),
@@ -35,16 +39,25 @@ class ApiClient {
   }
 
   Future<MeResponse> me() async {
-    final res = await _http.get(baseUri.resolve('auth/me'), headers: _headers(json: false));
+    final res = await _http.get(
+      baseUri.resolve('auth/me'),
+      headers: _headers(json: false),
+    );
     if (res.statusCode != 200) throw Exception('Me failed');
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     return MeResponse.fromJson(json);
   }
 
-  Future<int> uploadCsv({required String filename, required Uint8List bytes}) async {
+  Future<int> uploadCsv({
+    required String filename,
+    required Uint8List bytes,
+  }) async {
     final req = http.MultipartRequest('POST', baseUri.resolve('upload-csv'));
-    if (_accessToken != null) req.headers['Authorization'] = 'Bearer $_accessToken';
-    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    if (_accessToken != null)
+      req.headers['Authorization'] = 'Bearer $_accessToken';
+    req.files.add(
+      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+    );
     final streamed = await req.send();
     final body = await streamed.stream.bytesToString();
     if (streamed.statusCode != 200) throw Exception('Upload failed');
@@ -73,8 +86,10 @@ class ApiClient {
       final t = v.trim();
       if (t.isNotEmpty) qp.add('sku=${Uri.encodeQueryComponent(t)}');
     }
-    if (dateFrom != null) qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
-    if (dateTo != null) qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
+    if (dateFrom != null)
+      qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
+    if (dateTo != null)
+      qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
 
     final uri = baseUri.resolve('pricing/search?${qp.join('&')}');
     final res = await _http.get(uri, headers: _headers(json: false));
@@ -109,10 +124,14 @@ class ApiClient {
       final t = v.trim();
       if (t.isNotEmpty) qp.add('sku=${Uri.encodeQueryComponent(t)}');
     }
-    if (dateFrom != null) qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
-    if (dateTo != null) qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
+    if (dateFrom != null)
+      qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
+    if (dateTo != null)
+      qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
 
-    final uri = baseUri.resolve('pricing/search/meta${qp.isEmpty ? '' : '?${qp.join('&')}'}');
+    final uri = baseUri.resolve(
+      'pricing/search/meta${qp.isEmpty ? '' : '?${qp.join('&')}'}',
+    );
     final res = await _http.get(uri, headers: _headers(json: false));
     if (res.statusCode != 200) throw Exception('Search meta failed');
     final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -120,19 +139,11 @@ class ApiClient {
   }
 
   Future<PricingRecord> getPricing(String id) async {
-    final res = await _http.get(baseUri.resolve('pricing/$id'), headers: _headers(json: false));
-    if (res.statusCode != 200) throw Exception('Get failed');
-    final json = jsonDecode(res.body) as Map<String, dynamic>;
-    return PricingRecord.fromJson(json);
-  }
-
-  Future<PricingRecord> updatePrice(String id, double price) async {
-    final res = await _http.put(
+    final res = await _http.get(
       baseUri.resolve('pricing/$id'),
-      headers: _headers(),
-      body: jsonEncode({'price': price}),
+      headers: _headers(json: false),
     );
-    if (res.statusCode != 200) throw Exception('Update failed');
+    if (res.statusCode != 200) throw Exception('Get failed');
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     return PricingRecord.fromJson(json);
   }
@@ -162,4 +173,3 @@ class ApiClient {
     return PricingRecord.fromJson(json);
   }
 }
-

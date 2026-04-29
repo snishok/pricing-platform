@@ -14,6 +14,7 @@ from app.services.typesense_service import TypesenseService
 
 
 REQUIRED_CSV_COLUMNS = {"store_id", "sku", "product_name", "price", "date"}
+_DETAIL_RECORD_NOT_FOUND = "Record not found"
 
 
 class PricingService:
@@ -23,7 +24,7 @@ class PricingService:
     async def get_by_id(self, db: AsyncSession, record_id: uuid.UUID) -> PricingRecord:
         rec = await self._repo.get_by_id(db, record_id)
         if not rec:
-            raise LookupError("Record not found")
+            raise LookupError(_DETAIL_RECORD_NOT_FOUND)
         return rec
 
     async def get_by_ids(self, db: AsyncSession, record_ids: list[uuid.UUID]) -> list[PricingRecord]:
@@ -39,7 +40,7 @@ class PricingService:
     ) -> PricingRecord:
         rec = await self._repo.update_price(db, record_id, price)
         if not rec:
-            raise LookupError("Record not found")
+            raise LookupError(_DETAIL_RECORD_NOT_FOUND)
         await db.commit()
         await typesense.update_price(record_id=str(rec.id), price=float(rec.price))
         return rec
@@ -55,7 +56,7 @@ class PricingService:
     ) -> PricingRecord:
         existing = await self._repo.get_by_id(db, record_id)
         if not existing:
-            raise LookupError("Record not found")
+            raise LookupError(_DETAIL_RECORD_NOT_FOUND)
 
         old_values = {
             "country_code": existing.country_code,
@@ -78,7 +79,7 @@ class PricingService:
 
         rec = await self._repo.update_fields(db, record_id, fields)
         if not rec:
-            raise LookupError("Record not found")
+            raise LookupError(_DETAIL_RECORD_NOT_FOUND)
 
         new_values = {
             "country_code": rec.country_code,

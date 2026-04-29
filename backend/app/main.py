@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
     async def error_envelope(request: Request, call_next):
         try:
             return await call_next(request)
-        except Exception as e:
+        except Exception:
             logger.exception("unhandled_error", path=str(request.url.path))
             return JSONResponse(
                 status_code=500,

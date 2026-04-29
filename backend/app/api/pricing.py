@@ -157,8 +157,8 @@ async def get_pricing_record(
     try:
         rec = await PricingService().get_by_id(db, record_id)
         return PricingRecordOut.model_validate(rec, from_attributes=True)
-    except LookupError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
 
 
 @router.put("/{record_id}", response_model=PricingRecordOut)
@@ -175,8 +175,8 @@ async def update_pricing_record(
         rec = await PricingService().update_record(db, record_id=record_id, user_id=user_id, fields=fields, typesense=ts)
         await clear_pricing_search_caches()
         return PricingRecordOut.model_validate(rec, from_attributes=True)
-    except LookupError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    except IntegrityError:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflict updating record")
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found") from exc
+    except IntegrityError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflict updating record") from exc
 

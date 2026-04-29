@@ -4,11 +4,12 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build_and_push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +44,7 @@ jobs:
       - name: Deploy manifests
         run: |
           kubectl apply -f pricing-platform/infra/k8s/namespace.yaml
+          kubectl apply -f pricing-platform/infra/k8s/networkpolicy.yaml
           kubectl apply -f pricing-platform/infra/k8s/secrets.example.yaml
           kubectl apply -f pricing-platform/infra/k8s/postgres-statefulset.yaml
           kubectl apply -f pricing-platform/infra/k8s/typesense-deployment.yaml

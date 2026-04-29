@@ -1,6 +1,10 @@
 import 'package:core/core.dart';
 import 'package:flutter/foundation.dart';
 
+const String _roleAdmin = 'admin';
+const String _roleEditor = 'editor';
+const String _roleUploader = 'uploader';
+
 class AuthState extends ChangeNotifier {
   final ApiClient _api;
   String? _token;
@@ -15,8 +19,10 @@ class AuthState extends ChangeNotifier {
   String? get error => _error;
   MeResponse? get me => _me;
 
-  bool get canUpload => _me?.role == 'uploader' || _me?.role == 'admin';
-  bool get canEdit => _me?.role == 'editor' || _me?.role == 'admin';
+  bool get canUpload => _hasRole(_roleUploader) || _hasRole(_roleAdmin);
+  bool get canEdit => _hasRole(_roleEditor) || _hasRole(_roleAdmin);
+
+  bool _hasRole(String role) => _me?.role == role;
 
   Future<void> login({required String email, required String password}) async {
     _loading = true;
@@ -42,4 +48,3 @@ class AuthState extends ChangeNotifier {
     notifyListeners();
   }
 }
-

@@ -12,11 +12,29 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: retention
-              image: pricing-platform-backend:latest
-              imagePullPolicy: IfNotPresent
+              image: your-dockerhub-user/pricing-backend:0.1.0
+              imagePullPolicy: Always
               command: ["python", "-m", "app.jobs.retention"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                runAsUser: 10001
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
               env:
                 - name: DATABASE_URL
                   valueFrom:

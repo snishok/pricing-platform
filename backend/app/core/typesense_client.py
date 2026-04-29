@@ -50,7 +50,6 @@ async def ensure_pricing_collection(client: typesense.Client) -> None:
         try:
             existing = client.collections[settings.typesense_collection].retrieve()
             existing_fields = {f.get("name") for f in (existing or {}).get("fields", []) if isinstance(f, dict)}
-            desired_fields = {f["name"] for f in PRICING_COLLECTION_SCHEMA.get("fields", [])}
 
             missing = [f for f in PRICING_COLLECTION_SCHEMA.get("fields", []) if f["name"] not in existing_fields]
             if missing:
