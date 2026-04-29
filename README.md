@@ -29,10 +29,27 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
+### Demo users (seeded)
+When running via Docker Compose, the backend seeds 4 demo users (one per role):
+
+- **Admin** (`admin@example.com` / `change_me_please`)
+  - Can search, upload CSV, edit records, and create API keys
+- **Viewer** (`viewer@example.com` / `change_me_please`)
+  - Can search only (no upload, no edit)
+- **Editor** (`editor@example.com` / `change_me_please`)
+  - Can search + edit records (no upload)
+- **Uploader** (`uploader@example.com` / `change_me_please`)
+  - Can search + upload CSV (no edit)
+
+You can override these via env vars in `docker-compose.yml`:
+`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_VIEWER_EMAIL`, `SEED_VIEWER_PASSWORD`, `SEED_EDITOR_EMAIL`, `SEED_EDITOR_PASSWORD`, `SEED_UPLOADER_EMAIL`, `SEED_UPLOADER_PASSWORD`.
+
 ### Endpoints
 - **Docs**: `GET /api/docs`
 - **Health**: `GET /api/healthz`, `GET /api/readyz`
 - **Auth**: `POST /api/auth/login`
+- **Me**: `GET /api/auth/me`
+- **Create API key (admin)**: `POST /api/auth/api-keys`
 - **Upload CSV**: `POST /api/upload-csv`
 - **Search**: `GET /api/pricing/search`
 - **Get/Update**: `GET /api/pricing/{id}`, `PUT /api/pricing/{id}`
@@ -44,6 +61,27 @@ Columns required:
 - `product_name`
 - `price`
 - `date` (YYYY-MM-DD)
+
+### Upload automation (optional API key)
+If you want a non-human credential for automated uploads:
+
+1) Login as admin and create an API key:
+
+```bash
+curl -sS -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"change_me_please"}'
+
+# then call /api/auth/api-keys with the Bearer token you got back
+```
+
+2) Upload using the `X-API-Key` header:
+
+```bash
+curl -sS -X POST http://localhost:8080/api/upload-csv \
+  -H "X-API-Key: <paste_api_key_here>" \
+  -F "file=@scripts/sample_pricing.csv"
+```
 
 ### Kubernetes
 Manifests are in `infra/k8s/`.

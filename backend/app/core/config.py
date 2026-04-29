@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     seed_admin_email: str | None = None
     seed_admin_password: str | None = None
 
+    seed_viewer_email: str | None = None
+    seed_viewer_password: str | None = None
+
+    seed_editor_email: str | None = None
+    seed_editor_password: str | None = None
+
+    seed_uploader_email: str | None = None
+    seed_uploader_password: str | None = None
+
     typesense_api_key: str
     typesense_host: str = "typesense"
     typesense_port: int = 8108

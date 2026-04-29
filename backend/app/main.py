@@ -73,25 +73,39 @@ def create_app() -> FastAPI:
 
         await _retry(_db_ready, attempts=40, sleep_s=1.0)
 
-        if settings.seed_admin_email and settings.seed_admin_password:
-            async with SessionLocal() as session:
-                repo = UserRepository()
-                email = settings.seed_admin_email.strip().lower()
-                password = settings.seed_admin_password.strip()
-                existing = await repo.get_by_email(session, email)
+        async with SessionLocal() as session:
+            repo = UserRepository()
+
+            async def _seed_user(*, email: str | None, password: str | None, role: UserRole) -> None:
+                if not email or not password:
+                    return
+                e = email.strip().lower()
+                p = password.strip()
+                existing = await repo.get_by_email(session, e)
                 if not existing:
                     session.add(
                         User(
-                            email=email,
-                            password_hash=hash_password(password),
+                            email=e,
+                            password_hash=hash_password(p),
                             is_active=True,
-                            role=UserRole.admin.value,
+                            role=role.value,
                         )
                     )
                     await session.commit()
-                    logger.info("seed.admin_created", email=email)
+                    logger.info("seed.user_created", email=e, role=role.value)
                 else:
-                    logger.info("seed.admin_exists", email=email)
+                    # if the role changed (e.g. you reconfigured env vars), keep it updated for demos
+                    if existing.role != role.value:
+                        existing.role = role.value
+                        await session.commit()
+                        logger.info("seed.user_role_updated", email=e, role=role.value)
+                    else:
+                        logger.info("seed.user_exists", email=e, role=role.value)
+
+            await _seed_user(email=settings.seed_admin_email, password=settings.seed_admin_password, role=UserRole.admin)
+            await _seed_user(email=settings.seed_viewer_email, password=settings.seed_viewer_password, role=UserRole.viewer)
+            await _seed_user(email=settings.seed_editor_email, password=settings.seed_editor_password, role=UserRole.editor)
+            await _seed_user(email=settings.seed_uploader_email, password=settings.seed_uploader_password, role=UserRole.uploader)
 
         async def _typesense_ready() -> None:
             client = get_typesense_client()
