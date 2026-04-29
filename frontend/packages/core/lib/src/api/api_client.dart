@@ -54,24 +54,29 @@ class ApiClient {
 
   Future<Paginated<PricingRecord>> searchPricing({
     String? q,
-    String? storeId,
-    String? sku,
+    List<String>? storeIds,
+    List<String>? skus,
     DateTime? dateFrom,
     DateTime? dateTo,
     int page = 1,
     int perPage = 25,
   }) async {
-    final params = <String, String>{
-      'page': '$page',
-      'per_page': '$perPage',
-    };
-    if (q != null && q.isNotEmpty) params['q'] = q;
-    if (storeId != null && storeId.isNotEmpty) params['store_id'] = storeId;
-    if (sku != null && sku.isNotEmpty) params['sku'] = sku;
-    if (dateFrom != null) params['date_from'] = dateFrom.toIso8601String().split('T').first;
-    if (dateTo != null) params['date_to'] = dateTo.toIso8601String().split('T').first;
+    final qp = <String>[];
+    qp.add('page=$page');
+    qp.add('per_page=$perPage');
+    if (q != null && q.isNotEmpty) qp.add('q=${Uri.encodeQueryComponent(q)}');
+    for (final v in (storeIds ?? const <String>[])) {
+      final t = v.trim();
+      if (t.isNotEmpty) qp.add('store_id=${Uri.encodeQueryComponent(t)}');
+    }
+    for (final v in (skus ?? const <String>[])) {
+      final t = v.trim();
+      if (t.isNotEmpty) qp.add('sku=${Uri.encodeQueryComponent(t)}');
+    }
+    if (dateFrom != null) qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
+    if (dateTo != null) qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
 
-    final uri = baseUri.resolve('pricing/search').replace(queryParameters: params);
+    final uri = baseUri.resolve('pricing/search?${qp.join('&')}');
     final res = await _http.get(uri, headers: _headers(json: false));
     if (res.statusCode != 200) throw Exception('Search failed');
     final json = jsonDecode(res.body) as Map<String, dynamic>;
@@ -85,6 +90,33 @@ class ApiClient {
       perPage: (p['per_page'] as num).toInt(),
       total: (p['total'] as num).toInt(),
     );
+  }
+
+  Future<PricingSearchMeta> searchPricingMeta({
+    String? q,
+    List<String>? storeIds,
+    List<String>? skus,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    final qp = <String>[];
+    if (q != null && q.isNotEmpty) qp.add('q=${Uri.encodeQueryComponent(q)}');
+    for (final v in (storeIds ?? const <String>[])) {
+      final t = v.trim();
+      if (t.isNotEmpty) qp.add('store_id=${Uri.encodeQueryComponent(t)}');
+    }
+    for (final v in (skus ?? const <String>[])) {
+      final t = v.trim();
+      if (t.isNotEmpty) qp.add('sku=${Uri.encodeQueryComponent(t)}');
+    }
+    if (dateFrom != null) qp.add('date_from=${dateFrom.toIso8601String().split('T').first}');
+    if (dateTo != null) qp.add('date_to=${dateTo.toIso8601String().split('T').first}');
+
+    final uri = baseUri.resolve('pricing/search/meta${qp.isEmpty ? '' : '?${qp.join('&')}'}');
+    final res = await _http.get(uri, headers: _headers(json: false));
+    if (res.statusCode != 200) throw Exception('Search meta failed');
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    return PricingSearchMeta.fromJson(json);
   }
 
   Future<PricingRecord> getPricing(String id) async {

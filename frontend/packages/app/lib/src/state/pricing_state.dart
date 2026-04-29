@@ -11,6 +11,12 @@ class PricingState extends ChangeNotifier {
   int _perPage = 25;
   int _total = 0;
 
+  List<FacetValue> _storeIdFacets = const [];
+  List<FacetValue> _skuFacets = const [];
+  List<String> _suggestions = const [];
+
+  final List<String> _recentSearches = [];
+
   PricingState(this._api);
 
   bool get isLoading => _loading;
@@ -19,11 +25,15 @@ class PricingState extends ChangeNotifier {
   int get page => _page;
   int get perPage => _perPage;
   int get total => _total;
+  List<FacetValue> get storeIdFacets => _storeIdFacets;
+  List<FacetValue> get skuFacets => _skuFacets;
+  List<String> get suggestions => _suggestions;
+  List<String> get recentSearches => List.unmodifiable(_recentSearches);
 
   Future<void> search({
     String? q,
-    String? storeId,
-    String? sku,
+    List<String>? storeIds,
+    List<String>? skus,
     DateTime? dateFrom,
     DateTime? dateTo,
     int? page,
@@ -35,8 +45,8 @@ class PricingState extends ChangeNotifier {
     try {
       final res = await _api.searchPricing(
         q: q,
-        storeId: storeId,
-        sku: sku,
+        storeIds: storeIds,
+        skus: skus,
         dateFrom: dateFrom,
         dateTo: dateTo,
         page: page ?? _page,
@@ -46,12 +56,61 @@ class PricingState extends ChangeNotifier {
       _page = res.page;
       _perPage = res.perPage;
       _total = res.total;
+
+      final qTrim = (q ?? '').trim();
+      if (qTrim.isNotEmpty) _rememberRecentSearch(qTrim);
     } catch (e) {
       _error = 'Search failed';
     } finally {
       _loading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshMeta({
+    String? q,
+    List<String>? storeIds,
+    List<String>? skus,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    bool updateFacets = true,
+  }) async {
+    try {
+      final meta = await _api.searchPricingMeta(
+        q: q,
+        storeIds: storeIds,
+        skus: skus,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+      );
+      _suggestions = meta.suggestions;
+      if (updateFacets) {
+        _storeIdFacets = meta.storeIdFacets;
+        _skuFacets = meta.skuFacets;
+      }
+      notifyListeners();
+    } catch (_) {
+      // Keep previous meta; search itself will still work.
+    }
+  }
+
+  void clearMeta() {
+    _storeIdFacets = const [];
+    _skuFacets = const [];
+    _suggestions = const [];
+    notifyListeners();
+  }
+
+  void clearRecentSearches() {
+    _recentSearches.clear();
+    notifyListeners();
+  }
+
+  void _rememberRecentSearch(String q) {
+    // Keep most-recent-first, unique.
+    _recentSearches.removeWhere((e) => e.toLowerCase() == q.toLowerCase());
+    _recentSearches.insert(0, q);
+    if (_recentSearches.length > 8) _recentSearches.removeRange(8, _recentSearches.length);
   }
 
   Future<void> updatePrice(String id, double price) async {

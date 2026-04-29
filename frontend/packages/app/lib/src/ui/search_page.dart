@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 
 import 'package:core/core.dart';
 import '../state/auth_state.dart';
@@ -25,18 +26,34 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final _q = TextEditingController();
-  final _store = TextEditingController();
-  final _sku = TextEditingController();
   DateTime? _from;
   DateTime? _to;
   _SortOption _sort = _SortOption.relevance;
+  final Set<String> _selectedStoreIds = <String>{};
+  final Set<String> _selectedSkus = <String>{};
+  Timer? _debounce;
 
   @override
   void dispose() {
     _q.dispose();
-    _store.dispose();
-    _sku.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Initial load (facets + initial results) after first build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PricingState>().refreshMeta(
+            q: _q.text.trim(),
+            storeIds: _selectedStoreIds.toList(growable: false),
+            skus: _selectedSkus.toList(growable: false),
+            dateFrom: _from,
+            dateTo: _to,
+          );
+      _runSearch(page: 1);
+    });
   }
 
   Future<void> _pickFromDate(DateTime initial) async {
@@ -62,13 +79,38 @@ class _SearchPageState extends State<SearchPage> {
   void _runSearch({int? page, int? perPage}) {
     context.read<PricingState>().search(
           q: _q.text.trim(),
-          storeId: _store.text.trim(),
-          sku: _sku.text.trim(),
+          storeIds: _selectedStoreIds.toList(growable: false),
+          skus: _selectedSkus.toList(growable: false),
           dateFrom: _from,
           dateTo: _to,
           page: page ?? 1,
           perPage: perPage,
         );
+  }
+
+  void _refreshMeta() {
+    context.read<PricingState>().refreshMeta(
+          q: _q.text.trim(),
+          storeIds: _selectedStoreIds.toList(growable: false),
+          skus: _selectedSkus.toList(growable: false),
+          dateFrom: _from,
+          dateTo: _to,
+        );
+  }
+
+  void _debouncedMetaOnly() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 320), () {
+      if (!mounted) return;
+      context.read<PricingState>().refreshMeta(
+            q: _q.text.trim(),
+            storeIds: _selectedStoreIds.toList(growable: false),
+            skus: _selectedSkus.toList(growable: false),
+            dateFrom: _from,
+            dateTo: _to,
+            updateFacets: false,
+          );
+    });
   }
 
   List<_PricingRowVm> _buildSortedItems(PricingState state) {
@@ -99,10 +141,34 @@ class _SearchPageState extends State<SearchPage> {
             child: SingleChildScrollView(
               child: _FiltersPanel(
                 q: _q,
-                store: _store,
-                sku: _sku,
                 from: _from,
                 to: _to,
+                storeIdFacets: context.watch<PricingState>().storeIdFacets,
+                skuFacets: context.watch<PricingState>().skuFacets,
+                selectedStoreIds: _selectedStoreIds,
+                selectedSkus: _selectedSkus,
+                onToggleStoreId: (v, checked) {
+                  setState(() {
+                    if (checked) {
+                      _selectedStoreIds.add(v);
+                    } else {
+                      _selectedStoreIds.remove(v);
+                    }
+                  });
+                  _refreshMeta();
+                  _runSearch(page: 1);
+                },
+                onToggleSku: (v, checked) {
+                  setState(() {
+                    if (checked) {
+                      _selectedSkus.add(v);
+                    } else {
+                      _selectedSkus.remove(v);
+                    }
+                  });
+                  _refreshMeta();
+                  _runSearch(page: 1);
+                },
                 onPickFrom: () => _pickFromDate(DateTime.now()),
                 onPickTo: () => _pickToDate(DateTime.now()),
                 onClearDates: () => setState(() {
@@ -111,6 +177,17 @@ class _SearchPageState extends State<SearchPage> {
                 }),
                 onSearch: () {
                   Navigator.pop(context);
+                  _runSearch(page: 1);
+                },
+                onClearAll: () {
+                  setState(() {
+                    _q.clear();
+                    _from = null;
+                    _to = null;
+                    _selectedStoreIds.clear();
+                    _selectedSkus.clear();
+                  });
+                  _refreshMeta();
                   _runSearch(page: 1);
                 },
                 isLoading: context.read<PricingState>().isLoading,
@@ -138,10 +215,34 @@ class _SearchPageState extends State<SearchPage> {
 
         final filtersPanel = _FiltersPanel(
           q: _q,
-          store: _store,
-          sku: _sku,
           from: _from,
           to: _to,
+          storeIdFacets: state.storeIdFacets,
+          skuFacets: state.skuFacets,
+          selectedStoreIds: _selectedStoreIds,
+          selectedSkus: _selectedSkus,
+          onToggleStoreId: (v, checked) {
+            setState(() {
+              if (checked) {
+                _selectedStoreIds.add(v);
+              } else {
+                _selectedStoreIds.remove(v);
+              }
+            });
+            _refreshMeta();
+            _runSearch(page: 1);
+          },
+          onToggleSku: (v, checked) {
+            setState(() {
+              if (checked) {
+                _selectedSkus.add(v);
+              } else {
+                _selectedSkus.remove(v);
+              }
+            });
+            _refreshMeta();
+            _runSearch(page: 1);
+          },
           onPickFrom: () => _pickFromDate(DateTime.now()),
           onPickTo: () => _pickToDate(DateTime.now()),
           onClearDates: () => setState(() {
@@ -149,6 +250,17 @@ class _SearchPageState extends State<SearchPage> {
             _to = null;
           }),
           onSearch: () => _runSearch(page: 1),
+          onClearAll: () {
+            setState(() {
+              _q.clear();
+              _from = null;
+              _to = null;
+              _selectedStoreIds.clear();
+              _selectedSkus.clear();
+            });
+            _refreshMeta();
+            _runSearch(page: 1);
+          },
           isLoading: state.isLoading,
         );
 
@@ -182,6 +294,23 @@ class _SearchPageState extends State<SearchPage> {
                       const SizedBox(height: 10),
                       _ErrorBanner(message: state.error!),
                     ],
+                    const SizedBox(height: 10),
+                    _SurfaceCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: _SearchBox(
+                        controller: _q,
+                        isLoading: state.isLoading,
+                        recent: state.recentSearches,
+                        suggestions: state.suggestions,
+                        onChanged: (_) => _debouncedMetaOnly(),
+                        onSubmit: (v) {
+                          _q.text = v;
+                          _q.selection = TextSelection.collapsed(offset: _q.text.length);
+                          _refreshMeta();
+                          _runSearch(page: 1);
+                        },
+                      ),
+                    ),
                     const SizedBox(height: 10),
                     Expanded(
                       child: _SurfaceCard(
@@ -450,28 +579,70 @@ class _SortDropdown extends StatelessWidget {
 
 class _FiltersPanel extends StatelessWidget {
   final TextEditingController q;
-  final TextEditingController store;
-  final TextEditingController sku;
   final DateTime? from;
   final DateTime? to;
+  final List<FacetValue> storeIdFacets;
+  final List<FacetValue> skuFacets;
+  final Set<String> selectedStoreIds;
+  final Set<String> selectedSkus;
+  final void Function(String value, bool checked) onToggleStoreId;
+  final void Function(String value, bool checked) onToggleSku;
   final VoidCallback onPickFrom;
   final VoidCallback onPickTo;
   final VoidCallback onClearDates;
   final VoidCallback onSearch;
+  final VoidCallback onClearAll;
   final bool isLoading;
 
   const _FiltersPanel({
     required this.q,
-    required this.store,
-    required this.sku,
     required this.from,
     required this.to,
+    required this.storeIdFacets,
+    required this.skuFacets,
+    required this.selectedStoreIds,
+    required this.selectedSkus,
+    required this.onToggleStoreId,
+    required this.onToggleSku,
     required this.onPickFrom,
     required this.onPickTo,
     required this.onClearDates,
     required this.onSearch,
+    required this.onClearAll,
     required this.isLoading,
   });
+
+  Widget _facetList({
+    required BuildContext context,
+    required List<FacetValue> facets,
+    required Set<String> selected,
+    required void Function(String value, bool checked) onToggle,
+    required String emptyLabel,
+  }) {
+    if (facets.isEmpty) {
+      return Text(emptyLabel, style: Theme.of(context).textTheme.bodySmall);
+    }
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 180),
+      child: ListView.builder(
+        shrinkWrap: true,
+        itemCount: facets.length,
+        itemBuilder: (context, i) {
+          final f = facets[i];
+          final checked = selected.contains(f.value);
+          return CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            value: checked,
+            onChanged: isLoading ? null : (v) => onToggle(f.value, v == true),
+            title: Text(f.value, maxLines: 1, overflow: TextOverflow.ellipsis),
+            secondary: Text('${f.count}'),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -486,42 +657,34 @@ class _FiltersPanel extends StatelessWidget {
             Text('Filters', style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
             const Spacer(),
             TextButton(
-              onPressed: isLoading
-                  ? null
-                  : () {
-                      q.clear();
-                      store.clear();
-                      sku.clear();
-                      onClearDates();
-                    },
+              onPressed: isLoading ? null : onClearAll,
               child: const Text('Clear'),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         _FilterSection(
-          title: 'Search',
-          child: Column(
-            children: [
-              TextField(
-                controller: q,
-                decoration: const InputDecoration(
-                  labelText: 'Product name',
-                  prefixIcon: Icon(Icons.search),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(child: TextField(controller: store, decoration: const InputDecoration(labelText: 'Store ID'))),
-                  const SizedBox(width: 10),
-                  Expanded(child: TextField(controller: sku, decoration: const InputDecoration(labelText: 'SKU'))),
-                ],
-              ),
-            ],
+          title: 'Store ID',
+          child: _facetList(
+            context: context,
+            facets: storeIdFacets,
+            selected: selectedStoreIds,
+            onToggle: onToggleStoreId,
+            emptyLabel: 'No store IDs available',
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
+        _FilterSection(
+          title: 'SKU',
+          child: _facetList(
+            context: context,
+            facets: skuFacets,
+            selected: selectedSkus,
+            onToggle: onToggleSku,
+            emptyLabel: 'No SKUs available',
+          ),
+        ),
+        const SizedBox(height: 12),
         _FilterSection(
           title: 'Date range',
           trailing: TextButton(onPressed: isLoading ? null : onClearDates, child: const Text('Reset')),
@@ -539,7 +702,7 @@ class _FiltersPanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: isLoading ? null : onPickTo,
@@ -552,18 +715,143 @@ class _FiltersPanel extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: isLoading ? null : onSearch,
-                  child: Text(isLoading ? 'Searching…' : 'Apply & search'),
+                  child: Text(isLoading ? 'Searching…' : 'Apply & Search'),
                 ),
               ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SearchBox extends StatelessWidget {
+  final TextEditingController controller;
+  final bool isLoading;
+  final List<String> recent;
+  final List<String> suggestions;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmit;
+
+  const _SearchBox({
+    required this.controller,
+    required this.isLoading,
+    required this.recent,
+    required this.suggestions,
+    required this.onChanged,
+    required this.onSubmit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Autocomplete<String>(
+      optionsBuilder: (value) {
+        final q = value.text.trim().toLowerCase();
+        if (q.isEmpty) {
+          // Nothing typed: show recent first (no relevance signal).
+          return recent.take(8);
+        }
+
+        // User is typing: keep Typesense ordering (already relevance-ranked + typo tolerant),
+        // then add matching recents after.
+        final out = <String>[];
+        final seen = <String>{};
+
+        for (final s in suggestions) {
+          final t = s.trim();
+          if (t.isEmpty) continue;
+          final k = t.toLowerCase();
+          if (seen.add(k)) out.add(t);
+          if (out.length >= 8) return out;
+        }
+
+        for (final s in recent) {
+          final t = s.trim();
+          if (t.isEmpty) continue;
+          final k = t.toLowerCase();
+          if (!t.toLowerCase().contains(q)) continue;
+          if (seen.add(k)) out.add(t);
+          if (out.length >= 8) break;
+        }
+
+        return out;
+      },
+      onSelected: onSubmit,
+      fieldViewBuilder: (context, textController, focusNode, onFieldSubmitted) {
+        // Keep external controller in sync so existing search plumbing works.
+        if (textController.text != controller.text) {
+          textController.value = controller.value;
+        }
+        void sync(String v) {
+          controller.value = textController.value;
+          onChanged(v);
+        }
+
+        return TextField(
+          controller: textController,
+          focusNode: focusNode,
+          enabled: !isLoading,
+          onChanged: sync,
+          onSubmitted: (v) => onSubmit(v.trim()),
+          decoration: InputDecoration(
+            labelText: 'Search / Product name',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : (textController.text.trim().isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          textController.clear();
+                          controller.clear();
+                          onChanged('');
+                        },
+                        icon: const Icon(Icons.close),
+                      )),
+          ),
+        );
+      },
+      optionsViewBuilder: (context, onSelected, opts) {
+        final options = opts.toList(growable: false);
+        if (options.isEmpty) return const SizedBox.shrink();
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 6,
+            borderRadius: BorderRadius.circular(12),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320, maxWidth: 720),
+              child: ListView.separated(
+                padding: EdgeInsets.zero,
+                shrinkWrap: true,
+                itemCount: options.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, i) {
+                  final s = options[i];
+                  final isRecent = recent.any((r) => r.toLowerCase() == s.toLowerCase());
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(isRecent ? Icons.history : Icons.search, size: 18),
+                    title: Text(s, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    onTap: () => onSelected(s),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -595,7 +883,7 @@ class _FilterSection extends StatelessWidget {
                 trailing ?? const SizedBox.shrink(),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             child,
           ],
         ),

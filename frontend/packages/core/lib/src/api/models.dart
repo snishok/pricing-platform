@@ -57,3 +57,48 @@ class Paginated<T> {
   });
 }
 
+class FacetValue {
+  final String value;
+  final int count;
+
+  FacetValue({required this.value, required this.count});
+
+  factory FacetValue.fromJson(Map<String, dynamic> json) {
+    return FacetValue(
+      value: json['value'] as String,
+      count: (json['count'] as num).toInt(),
+    );
+  }
+}
+
+class PricingSearchMeta {
+  final int found;
+  final List<FacetValue> storeIdFacets;
+  final List<FacetValue> skuFacets;
+  final List<String> suggestions;
+
+  PricingSearchMeta({
+    required this.found,
+    required this.storeIdFacets,
+    required this.skuFacets,
+    required this.suggestions,
+  });
+
+  static List<FacetValue> _facetValuesFor(List<dynamic> facetCounts, String fieldName) {
+    final fc = facetCounts.cast<Map<String, dynamic>>().where((e) => e['field_name'] == fieldName).toList();
+    if (fc.isEmpty) return const [];
+    final counts = (fc.first['counts'] as List<dynamic>).cast<Map<String, dynamic>>();
+    return counts.map(FacetValue.fromJson).toList(growable: false);
+  }
+
+  factory PricingSearchMeta.fromJson(Map<String, dynamic> json) {
+    final facetCounts = (json['facet_counts'] as List<dynamic>? ?? const <dynamic>[]);
+    return PricingSearchMeta(
+      found: (json['found'] as num? ?? 0).toInt(),
+      storeIdFacets: _facetValuesFor(facetCounts, 'store_id'),
+      skuFacets: _facetValuesFor(facetCounts, 'sku'),
+      suggestions: (json['suggestions'] as List<dynamic>? ?? const <dynamic>[]).map((e) => e.toString()).toList(growable: false),
+    );
+  }
+}
+
