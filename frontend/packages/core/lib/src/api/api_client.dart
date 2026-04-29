@@ -34,6 +34,13 @@ class ApiClient {
     return token;
   }
 
+  Future<MeResponse> me() async {
+    final res = await _http.get(baseUri.resolve('auth/me'), headers: _headers(json: false));
+    if (res.statusCode != 200) throw Exception('Me failed');
+    final json = jsonDecode(res.body) as Map<String, dynamic>;
+    return MeResponse.fromJson(json);
+  }
+
   Future<int> uploadCsv({required String filename, required Uint8List bytes}) async {
     final req = http.MultipartRequest('POST', baseUri.resolve('upload-csv'));
     if (_accessToken != null) req.headers['Authorization'] = 'Bearer $_accessToken';

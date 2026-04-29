@@ -27,6 +27,22 @@ class PricingRecord {
   }
 }
 
+class MeResponse {
+  final String id;
+  final String email;
+  final String role;
+
+  MeResponse({required this.id, required this.email, required this.role});
+
+  factory MeResponse.fromJson(Map<String, dynamic> json) {
+    return MeResponse(
+      id: json['id'] as String,
+      email: json['email'] as String,
+      role: json['role'] as String,
+    );
+  }
+}
+
 class Paginated<T> {
   final List<T> items;
   final int page;

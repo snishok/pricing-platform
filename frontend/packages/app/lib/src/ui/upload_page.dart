@@ -34,6 +34,7 @@ class _UploadPageState extends State<UploadPage> {
                 onPressed: _loading
                     ? null
                     : () async {
+                        final pricing = context.read<PricingState>();
                         setState(() {
                           _loading = true;
                           _message = null;
@@ -51,9 +52,10 @@ class _UploadPageState extends State<UploadPage> {
                           final f = result.files.single;
                           if (f.bytes == null) throw Exception('Failed to read file bytes');
                           final inserted = await api.uploadCsv(filename: f.name, bytes: f.bytes!);
+                          if (!mounted) return;
                           setState(() => _message = 'Inserted $inserted rows');
                           // optional: refresh search after upload
-                          await context.read<PricingState>().search(page: 1);
+                          await pricing.search(page: 1);
                         } catch (e) {
                           setState(() => _message = 'Upload failed');
                         } finally {

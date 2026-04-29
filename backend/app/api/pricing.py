@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_user_id
+from app.api.deps import get_db, require_roles, require_user_id
+from app.core.roles import EDIT_ROLES
 from app.core.typesense_client import get_typesense_client
 from app.schemas.common import PaginatedResponse, PaginationMeta
 from app.schemas.pricing import PricingRecordOut, PricingUpdateRequest
@@ -97,6 +98,7 @@ async def update_pricing_record(
     payload: PricingUpdateRequest,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(require_user_id),
+    _: object = Depends(require_roles(EDIT_ROLES)),
 ) -> PricingRecordOut:
     try:
         ts = TypesenseService(get_typesense_client())

@@ -7,7 +7,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_user_id
+from app.api.deps import get_db, require_uploader_or_api_key
 from app.core.typesense_client import get_typesense_client
 from app.services.pricing_service import PricingService
 from app.services.typesense_service import TypesenseService
@@ -20,7 +20,7 @@ router = APIRouter(tags=["upload"])
 async def upload_csv(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    _: uuid.UUID = Depends(require_user_id),
+    _: None = Depends(require_uploader_or_api_key),
 ) -> dict[str, int]:
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Expected a .csv file")

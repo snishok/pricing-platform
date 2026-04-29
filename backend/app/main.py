@@ -16,6 +16,7 @@ from app.core.db import Base, engine
 from app.core.db import SessionLocal
 from app.core.logging import configure_logging, logger
 from app.core.security import hash_password
+from app.core.roles import UserRole
 from app.core.typesense_client import ensure_pricing_collection, get_typesense_client
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
                             email=email,
                             password_hash=hash_password(password),
                             is_active=True,
+                            role=UserRole.admin.value,
                         )
                     )
                     await session.commit()

@@ -16,5 +16,5 @@ class AuthService:
             raise PermissionError("Invalid credentials")
         if not verify_password(password, user.password_hash):
             raise PermissionError("Invalid credentials")
-        return create_access_token(subject=str(user.id), extra={"email": user.email})
+        return create_access_token(subject=str(user.id), extra={"email": user.email, "role": user.role})
 
