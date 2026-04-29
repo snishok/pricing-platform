@@ -126,15 +126,15 @@ class PricingService:
         *,
         q: str | None,
         country_code: str | None,
-        store_id: str | None,
-        sku: str | None,
+        store_ids: list[str] | None,
+        skus: list[str] | None,
         date_from: date | None,
         date_to: date | None,
         page: int,
         per_page: int,
     ) -> tuple[list[PricingRecord], int]:
         base = self._repo.db_fallback_search_stmt(
-            q=q, country_code=country_code, store_id=store_id, sku=sku, date_from=date_from, date_to=date_to
+            q=q, country_code=country_code, store_ids=store_ids, skus=skus, date_from=date_from, date_to=date_to
         )
         count_stmt = select(func.count()).select_from(base.subquery())
         total = int((await db.execute(count_stmt)).scalar_one())

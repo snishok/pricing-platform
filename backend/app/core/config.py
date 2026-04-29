@@ -35,8 +35,22 @@ class Settings(BaseSettings):
     typesense_port: int = 8108
     typesense_protocol: str = "http"
     typesense_collection: str = "pricing"
+    typesense_max_concurrency: int = 16
 
-    rate_limit_per_minute: str = "120/minute"
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: str = "600/minute"
+    rate_limit_storage_uri: str | None = None
+
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_timeout_seconds: int = 30
+    db_pool_recycle_seconds: int = 1800
+
+    search_cache_ttl_seconds: int = 15
+    search_cache_max_entries: int = 512
+    search_cache_redis_url: str | None = None
+
+    max_upload_bytes: int = 50 * 1024 * 1024
 
     # Data normalization defaults (used when feeds omit these fields)
     default_country_code: str = "XX"

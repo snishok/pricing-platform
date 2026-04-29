@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
 from typing import Any
 
 import typesense
@@ -9,6 +10,7 @@ from app.core.config import settings
 from app.core.logging import logger
 
 
+@lru_cache(maxsize=1)
 def get_typesense_client() -> typesense.Client:
     return typesense.Client(
         {

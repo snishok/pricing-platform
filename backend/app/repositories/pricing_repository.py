@@ -106,18 +106,18 @@ class PricingRepository:
         *,
         q: str | None,
         country_code: str | None,
-        store_id: str | None,
-        sku: str | None,
+        store_ids: list[str] | None,
+        skus: list[str] | None,
         date_from: date | None,
         date_to: date | None,
     ) -> Select:
         stmt: Select = select(PricingRecord)
         if country_code:
             stmt = stmt.where(PricingRecord.country_code == country_code)
-        if store_id:
-            stmt = stmt.where(PricingRecord.store_id == store_id)
-        if sku:
-            stmt = stmt.where(PricingRecord.sku == sku)
+        if store_ids:
+            stmt = stmt.where(PricingRecord.store_id.in_(store_ids))
+        if skus:
+            stmt = stmt.where(PricingRecord.sku.in_(skus))
         if date_from:
             stmt = stmt.where(PricingRecord.date >= date_from)
         if date_to:

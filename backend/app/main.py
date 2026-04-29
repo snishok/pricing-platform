@@ -41,7 +41,12 @@ async def _retry(coro_factory, *, attempts: int = 30, sleep_s: float = 1.0) -> N
 def create_app() -> FastAPI:
     configure_logging(settings.environment)
 
-    limiter = Limiter(key_func=get_remote_address, default_limits=[settings.rate_limit_per_minute])
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[settings.rate_limit_per_minute],
+        enabled=settings.rate_limit_enabled,
+        storage_uri=settings.rate_limit_storage_uri,
+    )
     app = FastAPI(title=settings.app_name)
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
