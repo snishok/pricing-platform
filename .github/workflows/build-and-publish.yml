@@ -1,0 +1,97 @@
+name: Build & Publish Images
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build_backend:
+    runs-on: ubuntu-latest
+    outputs:
+      backend_image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build & push backend image
+        id: meta
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:${{ github.sha }}"
+          docker build -t "$IMAGE" backend
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  build_frontend:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build & push frontend image
+        id: meta
+        run: |
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:${{ github.sha }}"
+          docker build -t "$IMAGE" frontend/packages/app
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+  update_dev_overlay:
+    runs-on: ubuntu-latest
+    needs: [build_backend, build_frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update dev overlay image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, re
+          path = os.environ["DEV_KUSTOM"]
+          sha = os.environ["GITHUB_SHA"]
+          dockerhub = os.environ["DOCKERHUB_USERNAME"]
+          s = open(path, "r", encoding="utf-8").read()
+          # Update both newName (registry path) and newTag (immutable SHA)
+          s = re.sub(
+              r"(name:\s*your-dockerhub-user/pricing-backend\s*(?:\n|\r\n)\s*newName:)\s*.*",
+              r"\1 " + f"{dockerhub}/pricing-backend",
+              s,
+          )
+          s = re.sub(
+              r"(name:\s*your-dockerhub-user/pricing-backend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*",
+              r"\1 " + sha,
+              s,
+          )
+          s = re.sub(
+              r"(name:\s*your-dockerhub-user/pricing-frontend\s*(?:\n|\r\n)\s*newName:)\s*.*",
+              r"\1 " + f"{dockerhub}/pricing-frontend",
+              s,
+          )
+          s = re.sub(
+              r"(name:\s*your-dockerhub-user/pricing-frontend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*",
+              r"\1 " + sha,
+              s,
+          )
+          open(path, "w", encoding="utf-8").write(s)
+          PY
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DEV_KUSTOM: infra/k8s/overlays/dev/kustomization.yaml
+      - name: Create PR for dev deployment
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: deploy/dev-${{ github.sha }}
+          title: "deploy(dev): ${{ github.sha }}"
+          body: |
+            Updates `infra/k8s/overlays/dev` to deploy images built from `${{ github.sha }}`.
+          commit-message: "deploy(dev): bump images to ${{ github.sha }}"
+

@@ -1,0 +1,44 @@
+name: Promote to Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Image tag (git sha) to promote"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update staging overlay image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGING_KUSTOM="infra/k8s/overlays/staging/kustomization.yaml"
+          python - <<'PY'
+          import os, re
+          path = os.environ["STAGING_KUSTOM"]
+          sha = os.environ["PROMOTE_SHA"]
+          s = open(path, "r", encoding="utf-8").read()
+          s = re.sub(r"(name:\s*your-dockerhub-user/pricing-backend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*", r"\1 "+sha, s)
+          s = re.sub(r"(name:\s*your-dockerhub-user/pricing-frontend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*", r"\1 "+sha, s)
+          open(path, "w", encoding="utf-8").write(s)
+          PY
+        env:
+          STAGING_KUSTOM: infra/k8s/overlays/staging/kustomization.yaml
+          PROMOTE_SHA: ${{ inputs.sha }}
+      - name: Create PR for staging promotion
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/staging-${{ inputs.sha }}
+          title: "promote(staging): ${{ inputs.sha }}"
+          body: |
+            Promotes the release to **staging** by updating `infra/k8s/overlays/staging` image tags to `${{ inputs.sha }}`.
+          commit-message: "promote(staging): ${{ inputs.sha }}"
+

@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: your-dockerhub-user/pricing-backend:0.1.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          env:
+            - name: WEB_CONCURRENCY
+              value: "4"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: DATABASE_URL
+            - name: DB_POOL_SIZE
+              value: "3"
+            - name: DB_MAX_OVERFLOW
+              value: "5"
+            - name: DB_POOL_TIMEOUT_SECONDS
+              value: "30"
+            - name: DB_POOL_RECYCLE_SECONDS
+              value: "1800"
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: JWT_SECRET_KEY
+            - name: TYPESENSE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: TYPESENSE_API_KEY
+            - name: TYPESENSE_HOST
+              value: typesense
+            - name: TYPESENSE_PORT
+              value: "8108"
+            - name: TYPESENSE_PROTOCOL
+              value: http
+            - name: TYPESENSE_MAX_CONCURRENCY
+              value: "16"
+            - name: RATE_LIMIT_ENABLED
+              value: "true"
+            - name: RATE_LIMIT_PER_MINUTE
+              value: "600/minute"
+            - name: RATE_LIMIT_STORAGE_URI
+              value: redis://redis:6379/0
+            - name: SEARCH_CACHE_TTL_SECONDS
+              value: "15"
+            - name: SEARCH_CACHE_MAX_ENTRIES
+              value: "512"
+            - name: SEARCH_CACHE_REDIS_URL
+              value: redis://redis:6379/1
+            - name: MAX_UPLOAD_BYTES
+              value: "52428800"
+            - name: SEED_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_ADMIN_EMAIL
+            - name: SEED_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_ADMIN_PASSWORD
+            - name: SEED_VIEWER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_VIEWER_EMAIL
+            - name: SEED_VIEWER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_VIEWER_PASSWORD
+            - name: SEED_EDITOR_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_EDITOR_EMAIL
+            - name: SEED_EDITOR_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_EDITOR_PASSWORD
+            - name: SEED_UPLOADER_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_UPLOADER_EMAIL
+            - name: SEED_UPLOADER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: SEED_UPLOADER_PASSWORD
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+

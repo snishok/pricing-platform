@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: pricing-platform
+  namespace: argocd
+spec:
+  sourceRepos:
+    - https://github.com/snishok/pricing-platform.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: pricing-platform-*
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+

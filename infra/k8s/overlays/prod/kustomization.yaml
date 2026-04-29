@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pricing-platform-prod
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+patches:
+  - path: patch-ingress.yaml
+
+images:
+  - name: your-dockerhub-user/pricing-backend
+    newName: your-dockerhub-user/pricing-backend
+    newTag: prod
+  - name: your-dockerhub-user/pricing-frontend
+    newName: your-dockerhub-user/pricing-frontend
+    newTag: prod
+

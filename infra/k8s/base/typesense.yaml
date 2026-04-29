@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: typesense
+spec:
+  ports:
+    - port: 8108
+      name: http
+  selector:
+    app: typesense
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: typesense
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: typesense
+  template:
+    metadata:
+      labels:
+        app: typesense
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: typesense
+          image: typesense/typesense:30.2
+          imagePullPolicy: Always
+          args:
+            - --data-dir=/data
+            - --api-key=$(TYPESENSE_API_KEY)
+            - --enable-cors
+          env:
+            - name: TYPESENSE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: pricing-secrets
+                  key: TYPESENSE_API_KEY
+          ports:
+            - containerPort: 8108
+              name: http
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8108
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8108
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: typesense-pvc
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: typesense-pvc
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+

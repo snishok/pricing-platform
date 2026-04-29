@@ -110,21 +110,47 @@ curl -sS -X POST http://localhost:8080/api/upload-csv \
 ```
 
 ### Kubernetes
-Manifests are in `infra/k8s/`.
+Manifests are in `infra/k8s/` and are structured for **GitOps** via **Kustomize overlays**.
 
-- Apply:
+#### Kustomize layout
+- **Base (shared)**: `infra/k8s/base/`
+- **Environments**:
+  - `infra/k8s/overlays/dev/`
+  - `infra/k8s/overlays/staging/`
+  - `infra/k8s/overlays/prod/`
+
+Each overlay sets:
+- its **namespace**
+- **Ingress host**
+- backend/frontend **image tags** (via `kustomization.yaml -> images:`)
+
+#### Render/apply locally (non-GitOps)
+For a quick manual apply (dev), render the overlay and apply it:
 
 ```bash
-kubectl apply -f infra/k8s/namespace.yaml
-kubectl apply -f infra/k8s/secrets.example.yaml
-kubectl apply -f infra/k8s/postgres-statefulset.yaml
-kubectl apply -f infra/k8s/typesense-deployment.yaml
-kubectl apply -f infra/k8s/redis-deployment.yaml
-kubectl apply -f infra/k8s/backend-deployment.yaml
-kubectl apply -f infra/k8s/frontend-deployment.yaml
-kubectl apply -f infra/k8s/retention-cronjob.yaml
-kubectl apply -f infra/k8s/ingress.yaml
+kubectl kustomize infra/k8s/overlays/dev | kubectl apply -f -
 ```
+
+#### Secrets
+Workloads expect a Secret named `pricing-secrets` in each environment namespace.
+
+- Do **not** use `infra/k8s/secrets.example.yaml` for staging/prod.
+- For GitOps, manage secrets via **External Secrets** or **Sealed Secrets** (see `infra/k8s/base/secrets/README.md`).
+
+#### Argo CD (GitOps CD)
+This repo includes example Argo CD `Application` manifests:
+- `infra/argocd/dev-app.yaml` (auto-sync)
+- `infra/argocd/staging-app.yaml`
+- `infra/argocd/prod-app.yaml`
+
+The intended promotion flow is **PR-based**: update overlay image tags, merge, and let Argo reconcile.
+
+#### CI/CD summary (GitHub Actions)
+- **PR CI**: `.github/workflows/pr-build-test.yml` (tests + analyze + Trivy scan)
+- **Build & publish**: `.github/workflows/build-and-publish.yml` (build `:sha` images and open a PR to update `overlays/dev`)
+- **Promotions**:
+  - `.github/workflows/promote-staging.yml` (opens PR to bump staging overlay)
+  - `.github/workflows/promote-prod.yml` (opens PR to bump prod overlay; uses `environment: production` for approval gating)
 
 ### Partitioning & retention (production knobs)
 - **Pricing table partitioning**: set `ENABLE_PRICING_PARTITIONING=true` to convert `pricing_records` to **monthly partitions** (RANGE by `date`) and auto-create partitions around “now”.

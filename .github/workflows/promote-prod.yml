@@ -1,0 +1,46 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Image tag (git sha) to promote"
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update prod overlay image tags
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROD_KUSTOM="infra/k8s/overlays/prod/kustomization.yaml"
+          python - <<'PY'
+          import os, re
+          path = os.environ["PROD_KUSTOM"]
+          sha = os.environ["PROMOTE_SHA"]
+          s = open(path, "r", encoding="utf-8").read()
+          s = re.sub(r"(name:\s*your-dockerhub-user/pricing-backend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*", r"\1 "+sha, s)
+          s = re.sub(r"(name:\s*your-dockerhub-user/pricing-frontend\s*(?:\n|\r\n)\s*newName:\s*[^\n]+\s*(?:\n|\r\n)\s*newTag:)\s*.*", r"\1 "+sha, s)
+          open(path, "w", encoding="utf-8").write(s)
+          PY
+        env:
+          PROD_KUSTOM: infra/k8s/overlays/prod/kustomization.yaml
+          PROMOTE_SHA: ${{ inputs.sha }}
+      - name: Create PR for production promotion
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/prod-${{ inputs.sha }}
+          title: "promote(prod): ${{ inputs.sha }}"
+          body: |
+            Promotes the release to **production** by updating `infra/k8s/overlays/prod` image tags to `${{ inputs.sha }}`.
+          commit-message: "promote(prod): ${{ inputs.sha }}"
+
