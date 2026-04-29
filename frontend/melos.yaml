@@ -1,0 +1,11 @@
+name: pricing_platform_frontend
+
+packages:
+  - packages/*
+  - jaspr_server
+
+scripts:
+  analyze:
+    run: melos exec -- dart analyze .
+  test:
+    run: melos exec -- flutter test

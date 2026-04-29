@@ -1,0 +1,54 @@
+name: Build & Test
+
+on:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pricing-platform/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://user:pass@localhost:5432/db
+          JWT_SECRET_KEY: test
+          TYPESENSE_API_KEY: test
+        run: |
+          pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: pricing-platform/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.41.4"
+          channel: "stable"
+      - name: Bootstrap melos
+        run: |
+          dart pub get
+          dart run melos bootstrap
+      - name: Analyze
+        run: dart run melos run analyze
+      - name: Test
+        run: |
+          cd packages/app
+          flutter test
+      - name: Build web
+        run: |
+          cd packages/app
+          flutter build web --release --dart-define=API_BASE=/api
+

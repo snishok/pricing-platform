@@ -1,0 +1,39 @@
+### OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+### Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+
+### Secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+### Node (if any)
+node_modules/
+
+### Dart / Flutter
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+*.iml
+
+### Logs
+*.log
+

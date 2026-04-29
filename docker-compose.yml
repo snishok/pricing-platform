@@ -1,0 +1,79 @@
+services:
+  nginx:
+    build:
+      context: ./infra/docker/nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: packages/app/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pricing
+      POSTGRES_USER: pricing_user
+      POSTGRES_PASSWORD: pricing_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pricing_user -d pricing"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  typesense:
+    image: typesense/typesense:30.2
+    command: ["--data-dir", "/data", "--api-key", "${TYPESENSE_API_KEY:-typesense_api_key}", "--enable-cors"]
+    ports:
+      - "8108:8108"
+    volumes:
+      - typesense_data:/data
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: dev
+      DATABASE_URL: postgresql+asyncpg://pricing_user:pricing_pass@postgres:5432/pricing
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change_me_in_prod}
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 60
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-change_me_please}
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY:-typesense_api_key}
+      TYPESENSE_HOST: typesense
+      TYPESENSE_PORT: 8108
+      TYPESENSE_PROTOCOL: http
+      TYPESENSE_COLLECTION: pricing
+      RATE_LIMIT_PER_MINUTE: 120/minute
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      typesense:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/healthz || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  postgres_data:
+  typesense_data:
+

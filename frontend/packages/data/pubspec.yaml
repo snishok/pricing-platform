@@ -1,0 +1,14 @@
+name: data
+description: Data layer (repositories/DTOs) for pricing platform.
+publish_to: "none"
+version: 0.0.1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  core:
+    path: ../core
+  domain:
+    path: ../domain
+

@@ -1,0 +1,11 @@
+name: core
+description: Shared core utilities and API client.
+publish_to: "none"
+version: 0.0.1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  http: ^1.5.0
+

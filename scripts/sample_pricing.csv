@@ -1,0 +1,4 @@
+store_id,sku,product_name,price,date
+store_1,SKU-001,Red Apple,1.99,2026-04-01
+store_1,SKU-002,Green Apple,2.19,2026-04-02
+store_2,SKU-003,Orange Juice,3.49,2026-04-03

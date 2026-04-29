@@ -1,0 +1,11 @@
+{
+  "name": "Pricing Platform",
+  "short_name": "Pricing",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#3F51B5",
+  "description": "Retail pricing platform",
+  "icons": []
+}
+

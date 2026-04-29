@@ -1,0 +1,12 @@
+name: domain
+description: Domain layer (entities/usecases) for pricing platform.
+publish_to: "none"
+version: 0.0.1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  core:
+    path: ../core
+

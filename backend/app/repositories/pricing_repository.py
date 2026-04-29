@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date
+
+from sqlalchemy import Select, func, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import select
+
+from app.models.pricing_record import PricingRecord
+
+
+class PricingRepository:
+    async def get_by_id(self, db: AsyncSession, record_id: uuid.UUID) -> PricingRecord | None:
+        res = await db.execute(select(PricingRecord).where(PricingRecord.id == record_id))
+        return res.scalar_one_or_none()
+
+    async def bulk_insert(self, db: AsyncSession, rows: list[dict]) -> None:
+        if not rows:
+            return
+        stmt = insert(PricingRecord).values(rows)
+        await db.execute(stmt)
+
+    async def bulk_upsert_by_store_sku_date(self, db: AsyncSession, rows: list[dict]) -> None:
+        if not rows:
+            return
+        stmt = insert(PricingRecord).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[PricingRecord.store_id, PricingRecord.sku, PricingRecord.date],
+            set_={
+                "product_name": stmt.excluded.product_name,
+                "price": stmt.excluded.price,
+                "updated_at": func.now(),
+            },
+        )
+        await db.execute(stmt)
+
+    async def update_price(self, db: AsyncSession, record_id: uuid.UUID, price: float) -> PricingRecord | None:
+        stmt = (
+            update(PricingRecord)
+            .where(PricingRecord.id == record_id)
+            .values(price=price)
+            .returning(PricingRecord)
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def update_fields(self, db: AsyncSession, record_id: uuid.UUID, fields: dict) -> PricingRecord | None:
+        if not fields:
+            return await self.get_by_id(db, record_id)
+        stmt = (
+            update(PricingRecord)
+            .where(PricingRecord.id == record_id)
+            .values(**fields)
+            .returning(PricingRecord)
+        )
+        res = await db.execute(stmt)
+        return res.scalar_one_or_none()
+
+    async def get_by_ids(self, db: AsyncSession, record_ids: list[uuid.UUID]) -> list[PricingRecord]:
+        if not record_ids:
+            return []
+        res = await db.execute(select(PricingRecord).where(PricingRecord.id.in_(record_ids)))
+        rows = list(res.scalars().all())
+        by_id = {r.id: r for r in rows}
+        return [by_id[rid] for rid in record_ids if rid in by_id]
+
+    def db_fallback_search_stmt(
+        self,
+        *,
+        q: str | None,
+        store_id: str | None,
+        sku: str | None,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> Select:
+        stmt: Select = select(PricingRecord)
+        if store_id:
+            stmt = stmt.where(PricingRecord.store_id == store_id)
+        if sku:
+            stmt = stmt.where(PricingRecord.sku == sku)
+        if date_from:
+            stmt = stmt.where(PricingRecord.date >= date_from)
+        if date_to:
+            stmt = stmt.where(PricingRecord.date <= date_to)
+        if q:
+            stmt = stmt.where(PricingRecord.product_name.ilike(f"%{q}%"))
+        return stmt.order_by(PricingRecord.date.desc())
+

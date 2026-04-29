@@ -1,0 +1,52 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build_and_push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push backend
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:${{ github.sha }} pricing-platform/backend
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:${{ github.sha }}
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pricing-backend:latest
+
+      - name: Build & push frontend
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:${{ github.sha }} pricing-platform/frontend/packages/app
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:${{ github.sha }}
+          docker tag ${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/pricing-frontend:latest
+
+  deploy_k8s:
+    runs-on: ubuntu-latest
+    needs: [build_and_push]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > ~/.kube/config
+      - name: Deploy manifests
+        run: |
+          kubectl apply -f pricing-platform/infra/k8s/namespace.yaml
+          kubectl apply -f pricing-platform/infra/k8s/secrets.example.yaml
+          kubectl apply -f pricing-platform/infra/k8s/postgres-statefulset.yaml
+          kubectl apply -f pricing-platform/infra/k8s/typesense-deployment.yaml
+          kubectl apply -f pricing-platform/infra/k8s/backend-deployment.yaml
+          kubectl apply -f pricing-platform/infra/k8s/frontend-deployment.yaml
+          kubectl apply -f pricing-platform/infra/k8s/ingress.yaml
+

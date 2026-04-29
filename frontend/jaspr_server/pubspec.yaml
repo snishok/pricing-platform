@@ -1,0 +1,12 @@
+name: pricing_platform_jaspr_server
+description: Jaspr server scaffold for SSR/hosting.
+publish_to: "none"
+version: 0.0.1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  jaspr: ^0.18.2
+  shelf: ^1.4.2
+
