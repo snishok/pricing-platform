@@ -42,12 +42,27 @@ services:
     volumes:
       - typesense_data:/data
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   backend:
     build:
       context: ./backend
     environment:
       ENVIRONMENT: dev
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
       DATABASE_URL: postgresql+asyncpg://pricing_user:pricing_pass@postgres:5432/pricing
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-10}
+      DB_POOL_TIMEOUT_SECONDS: ${DB_POOL_TIMEOUT_SECONDS:-30}
+      DB_POOL_RECYCLE_SECONDS: ${DB_POOL_RECYCLE_SECONDS:-1800}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change_me_in_prod}
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRES_MINUTES: 60
@@ -64,7 +79,14 @@ services:
       TYPESENSE_PORT: 8108
       TYPESENSE_PROTOCOL: http
       TYPESENSE_COLLECTION: pricing
-      RATE_LIMIT_PER_MINUTE: 120/minute
+      TYPESENSE_MAX_CONCURRENCY: ${TYPESENSE_MAX_CONCURRENCY:-16}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-600/minute}
+      RATE_LIMIT_STORAGE_URI: ${RATE_LIMIT_STORAGE_URI:-redis://redis:6379/0}
+      SEARCH_CACHE_TTL_SECONDS: ${SEARCH_CACHE_TTL_SECONDS:-15}
+      SEARCH_CACHE_MAX_ENTRIES: ${SEARCH_CACHE_MAX_ENTRIES:-512}
+      SEARCH_CACHE_REDIS_URL: ${SEARCH_CACHE_REDIS_URL:-redis://redis:6379/1}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-52428800}
       CORS_ORIGINS: '["http://localhost:8080","http://localhost:3000"]'
     ports:
       - "8000:8000"
@@ -73,6 +95,8 @@ services:
         condition: service_healthy
       typesense:
         condition: service_started
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/healthz || exit 1"]
       interval: 5s

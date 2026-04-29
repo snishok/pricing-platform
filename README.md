@@ -93,6 +93,7 @@ kubectl apply -f infra/k8s/namespace.yaml
 kubectl apply -f infra/k8s/secrets.example.yaml
 kubectl apply -f infra/k8s/postgres-statefulset.yaml
 kubectl apply -f infra/k8s/typesense-deployment.yaml
+kubectl apply -f infra/k8s/redis-deployment.yaml
 kubectl apply -f infra/k8s/backend-deployment.yaml
 kubectl apply -f infra/k8s/frontend-deployment.yaml
 kubectl apply -f infra/k8s/retention-cronjob.yaml
