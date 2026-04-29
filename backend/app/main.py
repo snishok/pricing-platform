@@ -222,7 +222,8 @@ def create_app() -> FastAPI:
             client = get_typesense_client()
             await ensure_pricing_collection(client)
 
-        await _retry(_typesense_ready, attempts=40, sleep_s=1.0)
+        if settings.environment != "test":
+            await _retry(_typesense_ready, attempts=40, sleep_s=1.0)
 
     app.include_router(health.router)
     app.include_router(auth.router)
